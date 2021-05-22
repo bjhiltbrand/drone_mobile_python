@@ -106,7 +106,61 @@ class Vehicle(object):
         else:
             _LOGGER.debug("Token is valid, continuing")
             pass
+
+    def __refreshToken(self, token):
+        # Token is invalid so let's try refreshing it
+        json = {
+            "AuthFlow": "REFRESH_TOKEN_AUTH",
+            "ClientId": AWSCLIENTID,
+            "AuthParameters": {
+                "REFRESH_TOKEN": self.refreshToken,
+            },
+        }
+        headers = {
+            **defaultHeaders,
+            **AUTH_HEADERS,
+        }
+
+        r = requests.post(
+            URLS["auth"],
+            json=json,
+            headers=headers,
+        )
+
+        if r.status_code == 200:
+            result = r.json()["AuthenticationResult"]
+            self.accessToken = result["AuthenticationResult"]["AccessToken"]
+            self.accessTokenExpiresAt = (time.time() - 100) + result[
+                "AuthenticationResult"
+            ]["ExpiresIn"]
+            self.idToken = result["AuthenticationResult"]["IdToken"]
+            self.idTokenType = result["AuthenticationResult"]["TokenType"]
+            if "RefreshToken" in result:
+                self.refreshToken = result["AuthenticationResult"]["RefreshToken"]
+            self.writeToken(result)
+        if r.status_code == 401:
+            _LOGGER.debug("401 response while refreshing token")
+            self.auth()
     
+    def writeToken(self, token):
+        # Save token to file to be reused
+        with open(self.token_location, "w") as outfile:
+            token["expiry_date"] = (time.time() - 100) + token["AuthenticationResult"][
+                "ExpiresIn"
+            ]
+            json.dump(token, outfile)
+
+    def readToken(self):
+        # Get saved token from file
+        with open(self.token_location) as token_file:
+            return json.load(token_file)
+
+    def clearToken(self):
+        if os.path.isfile("/tmp/droneMobile_token.txt"):
+            os.remove("/tmp/droneMobile_token.txt")
+        if os.path.isfile("/tmp/token.txt"):
+            os.remove("/tmp/token.txt")
+
     def status(self):
         # Get the status of the vehicles
         self.__acquireToken()
@@ -150,6 +204,36 @@ class Vehicle(object):
         """
         return self.sendCommand("disarm", deviceKey)
 
+    def trunk(self, deviceKey):
+        """
+        Issue a command to open the trunk
+        """
+        return self.sendCommand("trunk", deviceKey)
+    
+    def panic(self, deviceKey):
+        """
+        Issue a panic command to the vehicle
+        """
+        return self.sendCommand("panic", deviceKey)
+
+    def aux1(self, deviceKey):
+        """
+        Issue a command to trigger the mapped Aux1 button event
+        """
+        return self.sendCommand("remote_aux1", deviceKey)
+
+    def aux2(self, deviceKey):
+        """
+        Issue a command to trigger the mapped Aux1 button event
+        """
+        return self.sendCommand("remote_aux2", deviceKey)
+
+    def location(self, deviceKey):
+        """
+        Issue a command to return the vehicle's current location
+        """
+        return self.sendCommand("remote_aux1", deviceKey)
+
     def sendCommand(self, command, deviceKey):
         self.__acquireToken()
 
@@ -173,6 +257,6 @@ class Vehicle(object):
         )
 
         if command.status_code == 200:
-            return True
+            return command.json()
         else:
             command.raise_for_status()
