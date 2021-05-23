@@ -176,7 +176,7 @@ class Vehicle(object):
         )
 
         if response.status_code == 200:
-            return response.json()
+            return response.json()["results"]
         else:
             response.raise_for_status()
     
@@ -257,6 +257,6 @@ class Vehicle(object):
         )
 
         if command.status_code == 200:
-            return command.json()
+            return command.json()["parsed"]
         else:
             command.raise_for_status()
