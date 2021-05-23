@@ -54,15 +54,15 @@ class Vehicle(object):
             **AUTH_HEADERS,
         }
 
-        r = requests.post(
+        response = requests.post(
             URLS["auth"],
             json=json,
             headers=headers,
         )
 
-        if r.status_code == 200:
+        if response.status_code == 200:
             _LOGGER.debug("Succesfully fetched token.")
-            result = r.json()
+            result = response.json()
             self.accessToken = result["AuthenticationResult"]["AccessToken"]
             self.accessTokenExpiresAt = (time.time() - 100) + result[
                 "AuthenticationResult"
@@ -76,7 +76,7 @@ class Vehicle(object):
             self.writeToken(result)
             return True
         else:
-            r.raise_for_status()
+            response.raise_for_status()
     
     def __acquireToken(self):
         # Fetch and refresh token as needed
@@ -121,14 +121,14 @@ class Vehicle(object):
             **AUTH_HEADERS,
         }
 
-        r = requests.post(
+        response = requests.post(
             URLS["auth"],
             json=json,
             headers=headers,
         )
 
-        if r.status_code == 200:
-            result = r.json()["AuthenticationResult"]
+        if response.status_code == 200:
+            result = response.json()["AuthenticationResult"]
             self.accessToken = result["AuthenticationResult"]["AccessToken"]
             self.accessTokenExpiresAt = (time.time() - 100) + result[
                 "AuthenticationResult"
@@ -138,7 +138,7 @@ class Vehicle(object):
             if "RefreshToken" in result:
                 self.refreshToken = result["AuthenticationResult"]["RefreshToken"]
             self.writeToken(result)
-        if r.status_code == 401:
+        if response.status_code == 401:
             _LOGGER.debug("401 response while refreshing token")
             self.auth()
     
@@ -170,15 +170,15 @@ class Vehicle(object):
             "Authorization": self.idTokenType + " " + self.idToken,
         }
 
-        r = requests.get(
+        response = requests.get(
             URLS["vehicle_info"],
             headers=headers,
         )
 
-        if r.status_code == 200:
-            return r.json()["results"]
+        if response.status_code == 200:
+            return response.json()
         else:
-            r.raise_for_status()
+            response.raise_for_status()
     
     def start(self, deviceKey):
         """
