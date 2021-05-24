@@ -98,7 +98,7 @@ class Vehicle(object):
         if self.accessTokenExpiresAt:
             if time.time() >= self.accessTokenExpiresAt:
                 _LOGGER.debug("No token, or has expired, requesting new token")
-                self.refreshToken(data)
+                self.__refreshToken(data)
                 # self.auth()
         if self.idToken == None:
             # No existing token exists so refreshing library
