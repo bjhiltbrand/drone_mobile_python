@@ -4,6 +4,13 @@
 
 This is a basic Python wrapper around the DroneMobile API. The wrapper provides methods to return vehicle status as well as some basic commands, e.g. start/stop, lock/unlock.
 
+## Disclaimer
+
+The code here is based off of an unsupported API from
+[DroneMobile](https://www.dronemobile.com/) and is subject to change without
+notice. The authors claim no responsibility for damages to your vehicle
+by use of the code within.
+
 ## Features
 
 * Automatically authenticate & re-fetch tokens once expired
