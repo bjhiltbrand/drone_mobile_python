@@ -64,9 +64,7 @@ class Vehicle(object):
             _LOGGER.debug("Succesfully fetched token.")
             result = response.json()
             self.accessToken = result["AuthenticationResult"]["AccessToken"]
-            self.accessTokenExpiresAt = (time.time() - 100) + result[
-                "AuthenticationResult"
-            ]["ExpiresIn"]
+            self.accessTokenExpiresAt = (time.time() - 100) + result["AuthenticationResult"]["ExpiresIn"]
             self.idToken = result["AuthenticationResult"]["IdToken"]
             self.idTokenType = result["AuthenticationResult"]["TokenType"]
             self.refreshToken = result["AuthenticationResult"]["RefreshToken"]
@@ -99,7 +97,6 @@ class Vehicle(object):
             if time.time() >= self.accessTokenExpiresAt:
                 _LOGGER.debug("No token, or has expired, requesting new token")
                 self.__refreshToken(data)
-                # self.auth()
         if self.idToken == None:
             # No existing token exists so refreshing library
             self.auth()
@@ -128,11 +125,9 @@ class Vehicle(object):
         )
 
         if response.status_code == 200:
-            result = response.json()["AuthenticationResult"]
+            result = response.json()
             self.accessToken = result["AuthenticationResult"]["AccessToken"]
-            self.accessTokenExpiresAt = (time.time() - 100) + result[
-                "AuthenticationResult"
-            ]["ExpiresIn"]
+            self.accessTokenExpiresAt = (time.time() - 100) + result["AuthenticationResult"]["ExpiresIn"]
             self.idToken = result["AuthenticationResult"]["IdToken"]
             self.idTokenType = result["AuthenticationResult"]["TokenType"]
             if "RefreshToken" in result:
@@ -145,9 +140,7 @@ class Vehicle(object):
     def writeToken(self, token):
         # Save token to file to be reused
         with open(self.token_location, "w") as outfile:
-            token["expiry_date"] = (time.time() - 100) + token["AuthenticationResult"][
-                "ExpiresIn"
-            ]
+            token["expiry_date"] = (time.time() - 100) + token["AuthenticationResult"]["ExpiresIn"]
             json.dump(token, outfile)
 
     def readToken(self):
