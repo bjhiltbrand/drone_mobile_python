@@ -96,7 +96,7 @@ class Vehicle(object):
         if self.accessTokenExpiresAt:
             if time.time() >= self.accessTokenExpiresAt:
                 _LOGGER.debug("No token, or has expired, requesting new token")
-                self.__refreshToken(data)
+                self.__refreshToken()
         if self.idToken == None:
             # No existing token exists so refreshing library
             self.auth()
@@ -104,7 +104,7 @@ class Vehicle(object):
             _LOGGER.debug("Token is valid, continuing")
             pass
 
-    def __refreshToken(self, token):
+    def __refreshToken(self):
         # Token is invalid so let's try refreshing it
         json = {
             "AuthFlow": "REFRESH_TOKEN_AUTH",
@@ -132,6 +132,8 @@ class Vehicle(object):
             self.idTokenType = result["AuthenticationResult"]["TokenType"]
             if "RefreshToken" in result:
                 self.refreshToken = result["AuthenticationResult"]["RefreshToken"]
+            else:
+                result["AuthenticationResult"]["RefreshToken"] = self.refreshToken
             self.writeToken(result)
         if response.status_code == 401:
             _LOGGER.debug("401 response while refreshing token")
