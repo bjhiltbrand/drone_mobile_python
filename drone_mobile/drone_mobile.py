@@ -205,11 +205,17 @@ class Vehicle(object):
         """
         return self.sendCommand("trunk", deviceKey)
     
-    def panic(self, deviceKey):
+    def panic_on(self, deviceKey):
         """
         Issue a panic command to the vehicle
         """
-        return self.sendCommand("panic", deviceKey)
+        return self.sendCommand("panic_on", deviceKey)
+
+    def panic_off(self, deviceKey):
+        """
+        Issue a panic command to the vehicle
+        """
+        return self.sendCommand("panic_off", deviceKey)
 
     def aux1(self, deviceKey):
         """
