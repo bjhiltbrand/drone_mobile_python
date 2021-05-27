@@ -2,29 +2,41 @@
 
 AWSCLIENTID = "3l3gtebtua7qft45b4splbeuiu"
 
+BASE_API_URL = "https://api.dronemobile.com/api/"
+
+HOST = "api.dronemobile.com"
+
+API_VERSION = "v1"
+
 URLS = {
     "auth": "https://cognito-idp.us-east-1.amazonaws.com/",
-    "user_info": "https://api.dronemobile.com/api/v1/user",
-    "vehicle_info": "https://api.dronemobile.com/api/v1/vehicle?limit=",
-    "command": "https://accounts.dronemobile.com/api/iot/send-command",
+    "user_info": f"{BASE_API_URL}{API_VERSION}/user",
+    "vehicle_info": f"{BASE_API_URL}{API_VERSION}/vehicle?limit=100",
+    "command": f"{BASE_API_URL}{API_VERSION}/iot/command",
 }
 
 AVAILABLE_COMMANDS = {
-    "trunk",
-    "remote_start",
-    "remote_stop",
-    "arm",
-    "disarm",
-    "panic_on",
-    "panic_off",
-    "remote_aux1",
-    "remote_aux2",
-    "location",
+    "DEVICE_STATUS",
+    "REMOTE_START",
+    "REMOTE_STOP",
+    "ARM",
+    "DISARM",
+    "TRUNK",
+    "PANIC_ON",
+    "PANIC_OFF",
+    "REMOTE_AUX1",
+    "REMOTE_AUX2",
+    "LOCATION",
+}
+
+AVAILABLE_DEVICE_TYPES = {
+    "1", # I think this is in reference to the vehicle
+    "2", # I think this is in reference to the DroneMobile Module
 }
 
 COMMAND_HEADERS = {
-    "x-drone-api": None,
-    "Content-Type": "application/json;charset=utf-8",
+    "Authorization": None,
+    "Content-Type": "application/json",
 }
 
 AUTH_HEADERS = {
