@@ -1,4 +1,5 @@
 [![PyPI version](https://badge.fury.io/py/drone-mobile.svg)](https://badge.fury.io/py/drone-mobile)
+[![Downloads](https://crate.io/packages/drone-mobile.svg)](https://crate.io/packages/drone-mobile)
 
 # drone_mobile-python
 
