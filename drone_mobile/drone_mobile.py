@@ -5,6 +5,7 @@ from .const import (
     AUTH_HEADERS,
     AWSCLIENTID,
     TOKEN_FILE_LOCATION,
+    HOST,
 )
 
 import json
@@ -18,8 +19,7 @@ _LOGGER = logging.getLogger(__name__)
 defaultHeaders = {
     "Accept": "*/*",
     "Accept-Language": "en-US,en;q=0.9",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.75 Safari/537.36",
-    "Accept-Encoding": "gzip, deflate, br",
+    "Accept-Encoding": "gzip",
 }
 
 class Vehicle(object):
@@ -150,19 +150,28 @@ class Vehicle(object):
         with open(self.token_location) as token_file:
             return json.load(token_file)
 
-    def clearToken(self):
+    def clearTempToken(self):
         if os.path.isfile("/tmp/droneMobile_token.txt"):
             os.remove("/tmp/droneMobile_token.txt")
         if os.path.isfile("/tmp/token.txt"):
             os.remove("/tmp/token.txt")
 
+    def replaceToken(self):
+        self.clearTempToken()
+        if os.path.isfile(TOKEN_FILE_LOCATION):
+            os.remove(TOKEN_FILE_LOCATION)
+        self.auth()
+
     def status(self):
         # Get the status of the vehicles
         self.__acquireToken()
 
+        commandHeaders = COMMAND_HEADERS
+        commandHeaders['Authorization'] = f"{self.idTokenType} {self.idToken}"
+
         headers = {
             **defaultHeaders,
-            "Authorization": self.idTokenType + " " + self.idToken,
+            **commandHeaders,
         }
 
         response = requests.get(
@@ -175,75 +184,82 @@ class Vehicle(object):
         else:
             response.raise_for_status()
     
+    def device_status(self, deviceKey):
+        """
+        Poll the vehicle for updates
+        """
+        return self.sendCommand("DEVICE_STATUS", deviceKey, "2")
+
     def start(self, deviceKey):
         """
         Issue a start command to the engine
         """
-        return self.sendCommand("remote_start", deviceKey)
+        return self.sendCommand("REMOTE_START", deviceKey, "1")
 
     def stop(self, deviceKey):
         """
         Issue a stop command to the engine
         """
-        return self.sendCommand("remote_stop", deviceKey)
+        return self.sendCommand("REMOTE_STOP", deviceKey, "1")
 
     def lock(self, deviceKey):
         """
         Issue a lock command to the doors
         """
-        return self.sendCommand("arm", deviceKey)
+        return self.sendCommand("ARM", deviceKey, "1")
 
     def unlock(self, deviceKey):
         """
         Issue an unlock command to the doors
         """
-        return self.sendCommand("disarm", deviceKey)
+        return self.sendCommand("DISARM", deviceKey, "1")
 
     def trunk(self, deviceKey):
         """
         Issue a command to open the trunk
         """
-        return self.sendCommand("trunk", deviceKey)
+        return self.sendCommand("TRUNK", deviceKey, "1")
     
     def panic_on(self, deviceKey):
         """
         Issue a panic command to the vehicle
         """
-        return self.sendCommand("panic_on", deviceKey)
+        return self.sendCommand("PANIC_ON", deviceKey, "1")
 
     def panic_off(self, deviceKey):
         """
         Issue a panic command to the vehicle
         """
-        return self.sendCommand("panic_off", deviceKey)
+        return self.sendCommand("PANIC_OFF", deviceKey, "1")
 
     def aux1(self, deviceKey):
         """
         Issue a command to trigger the mapped Aux1 button event
         """
-        return self.sendCommand("remote_aux1", deviceKey)
+        return self.sendCommand("REMOTE_AUX1", deviceKey, "1")
 
     def aux2(self, deviceKey):
         """
         Issue a command to trigger the mapped Aux1 button event
         """
-        return self.sendCommand("remote_aux2", deviceKey)
+        return self.sendCommand("REMOTE_AUX2", deviceKey, "1")
 
     def location(self, deviceKey):
         """
         Issue a command to return the vehicle's current location
         """
-        return self.sendCommand("remote_aux1", deviceKey)
+        return self.sendCommand("LOCATION", deviceKey, "1")
 
-    def sendCommand(self, command, deviceKey):
+    def sendCommand(self, command, deviceKey, deviceType):
         self.__acquireToken()
 
         commandHeaders = COMMAND_HEADERS
-        commandHeaders['x-drone-api'] = self.idToken
+        commandHeaders['Authorization'] = f"{self.idTokenType} {self.idToken}"
 
         json = {
-            "deviceKey": deviceKey,
+            "device_key": deviceKey,
             "command": command,
+            "device_type":deviceType,
         }
 
         headers = {
