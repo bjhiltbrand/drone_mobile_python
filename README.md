@@ -1,4 +1,4 @@
-[![PyPI version](https://badge.fury.io/py/drone_mobile.svg)](https://badge.fury.io/py/drone_mobile)
+[![PyPI version](https://badge.fury.io/py/drone-mobile.svg)](https://badge.fury.io/py/drone-mobile)
 
 # drone_mobile-python
 
