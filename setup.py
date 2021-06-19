@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name='drone_mobile',
-    version='0.2.0',
+    version='0.2.1',
     author="bjhiltbrand",
     author_email="info@bjhiltbrand.me",
     description="Python wrapper for the DroneMobile API for Firstech/Compustar remote start systems.",

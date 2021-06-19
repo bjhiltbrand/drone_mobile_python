@@ -6,6 +6,8 @@ from .const import (
     AWSCLIENTID,
     TOKEN_FILE_LOCATION,
     HOST,
+    BASE_API_URL,
+    API_VERSION,
 )
 
 import json
@@ -162,7 +164,7 @@ class Vehicle(object):
             os.remove(TOKEN_FILE_LOCATION)
         self.auth()
 
-    def status(self):
+    def getAllVehicles(self):
         # Get the status of the vehicles
         self.__acquireToken()
 
@@ -181,6 +183,28 @@ class Vehicle(object):
 
         if response.status_code == 200:
             return response.json()["results"]
+        else:
+            response.raise_for_status()
+
+    def vehicle_status(self, vehicleID):
+        # Get the status of the vehicles
+        self.__acquireToken()
+
+        commandHeaders = COMMAND_HEADERS
+        commandHeaders['Authorization'] = f"{self.idTokenType} {self.idToken}"
+
+        headers = {
+            **defaultHeaders,
+            **commandHeaders,
+        }
+
+        response = requests.get(
+            f"{BASE_API_URL}{API_VERSION}/vehicle/{vehicleID}",
+            headers=headers,
+        )
+
+        if response.status_code == 200:
+            return response.json()
         else:
             response.raise_for_status()
     
