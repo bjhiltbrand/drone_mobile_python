@@ -70,9 +70,7 @@ class Vehicle(object):
             self.idToken = result["AuthenticationResult"]["IdToken"]
             self.idTokenType = result["AuthenticationResult"]["TokenType"]
             self.refreshToken = result["AuthenticationResult"]["RefreshToken"]
-            result["expiry_date"] = (time.time() - 100) + result[
-                "AuthenticationResult"
-            ]["ExpiresIn"]
+            result["expiry_date"] = (time.time() - 100) + result["AuthenticationResult"]["ExpiresIn"]
             self.writeToken(result)
             return True
         else:
@@ -136,6 +134,7 @@ class Vehicle(object):
                 self.refreshToken = result["AuthenticationResult"]["RefreshToken"]
             else:
                 result["AuthenticationResult"]["RefreshToken"] = self.refreshToken
+            result["expiry_date"] = (time.time() - 100) + result["AuthenticationResult"]["ExpiresIn"]
             self.writeToken(result)
         if response.status_code == 401:
             _LOGGER.debug("401 response while refreshing token")
@@ -144,7 +143,6 @@ class Vehicle(object):
     def writeToken(self, token):
         # Save token to file to be reused
         with open(self.token_location, "w") as outfile:
-            token["expiry_date"] = (time.time() - 100) + token["AuthenticationResult"]["ExpiresIn"]
             json.dump(token, outfile)
 
     def readToken(self):
@@ -272,7 +270,7 @@ class Vehicle(object):
         """
         Issue a command to return the vehicle's current location
         """
-        return self.sendCommand("LOCATION", deviceKey, "1")
+        return self.sendCommand("A30", deviceKey, "2")
 
     def sendCommand(self, command, deviceKey, deviceType):
         self.__acquireToken()
