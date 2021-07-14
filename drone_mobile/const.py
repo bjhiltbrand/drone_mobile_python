@@ -31,7 +31,7 @@ AVAILABLE_COMMANDS = {
 
 AVAILABLE_DEVICE_TYPES = {
     "1", # I think this is in reference to the vehicle
-    "2", # I think this is in reference to the DroneMobile Module
+    "2", # I think this is in reference to the DroneMobile Contoller Module
 }
 
 COMMAND_HEADERS = {
