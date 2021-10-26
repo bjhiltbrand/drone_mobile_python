@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name='drone_mobile',
-    version='0.2.2',
+    version='0.2.23',
     author="bjhiltbrand",
     author_email="info@bjhiltbrand.me",
     description="Python wrapper for the DroneMobile API for Firstech/Compustar remote start systems.",
@@ -23,5 +23,5 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    install_requires=['requests']
+    install_requires=['requests','filelock']
 )

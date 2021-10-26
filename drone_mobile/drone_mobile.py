@@ -13,7 +13,10 @@ from .const import (
 import json
 import logging
 import os
+import threading
+import filelock
 import time
+import calendar
 
 import requests
 
@@ -33,12 +36,14 @@ class Vehicle(object):
         self.accessToken = None
         self.accessTokenExpiresIn = None
         self.accessTokenExpiresAt = None
+        self.accessTokenExpiresAtDateTime = None
         self.idToken = None
         self.idTokenType = None
         self.refreshToken = None
         self.token_location = TOKEN_FILE_LOCATION
     
     def auth(self):
+        _LOGGER.debug("Auth method called.")
         """Authenticate and store the token"""
 
         json = {
@@ -67,16 +72,19 @@ class Vehicle(object):
             result = response.json()
             self.accessToken = result["AuthenticationResult"]["AccessToken"]
             self.accessTokenExpiresAt = (time.time() - 100) + result["AuthenticationResult"]["ExpiresIn"]
+            self.accessTokenExpiresAtDateTime = time.localtime(self.accessTokenExpiresAt)
             self.idToken = result["AuthenticationResult"]["IdToken"]
             self.idTokenType = result["AuthenticationResult"]["TokenType"]
             self.refreshToken = result["AuthenticationResult"]["RefreshToken"]
-            result["expiry_date"] = (time.time() - 100) + result["AuthenticationResult"]["ExpiresIn"]
+            result["expiry_time"] = self.accessTokenExpiresAt
+            result["expiry_date"] = time.localtime(self.accessTokenExpiresAt)
             self.writeToken(result)
             return True
         else:
             response.raise_for_status()
     
     def __acquireToken(self):
+        _LOGGER.debug("Acquire Token method called.")
         # Fetch and refresh token as needed
         # If file exists read in token file and check it's valid
         if os.path.isfile(self.token_location):
@@ -84,12 +92,22 @@ class Vehicle(object):
         else:
             data = dict()
             data["AuthenticationResult"]["AccessToken"] = self.accessToken
-            data["expiry_date"] = self.accessTokenExpiresAt
+            data["expiry_time"] = self.accessTokenExpiresAt
+            data["expiry_date"] = self.accessTokenExpiresAtDateTime
             data["AuthenticationResult"]["IdToken"] = self.idToken
             data["AuthenticationResult"]["TokenType"] = self.idTokenType
             data["AuthenticationResult"]["RefreshToken"] = self.refreshToken
         self.accessToken = data["AuthenticationResult"]["AccessToken"]
-        self.accessTokenExpiresAt = data["expiry_date"]
+        #Need to handle possible data transformation
+        if "expiry_time" not in data:
+            if data["expiry_date"] is not None:
+                if isinstance(data["expiry_date"], float):
+                    data["expiry_time"] = data["expiry_date"]
+                    self.accessTokenExpiresAt = data["expiry_time"]
+                    self.accessTokenExpiresAtDateTime = time.localtime(self.accessTokenExpiresAt)
+        else:
+            self.accessTokenExpiresAt = data["expiry_time"]
+            self.accessTokenExpiresAtDateTime = time.localtime(self.accessTokenExpiresAt)
         self.idToken = data["AuthenticationResult"]["IdToken"]
         self.idTokenType = data["AuthenticationResult"]["TokenType"]
         self.refreshToken = data["AuthenticationResult"]["RefreshToken"]
@@ -105,6 +123,7 @@ class Vehicle(object):
             pass
 
     def __refreshToken(self):
+        _LOGGER.debug("Refresh Token method called.")
         # Token is invalid so let's try refreshing it
         json = {
             "AuthFlow": "REFRESH_TOKEN_AUTH",
@@ -123,46 +142,66 @@ class Vehicle(object):
             json=json,
             headers=headers,
         )
-
+         
         if response.status_code == 200:
             result = response.json()
             self.accessToken = result["AuthenticationResult"]["AccessToken"]
             self.accessTokenExpiresAt = (time.time() - 100) + result["AuthenticationResult"]["ExpiresIn"]
+            self.accessTokenExpiresAtDateTime = time.localtime(self.accessTokenExpiresAt)
             self.idToken = result["AuthenticationResult"]["IdToken"]
             self.idTokenType = result["AuthenticationResult"]["TokenType"]
             if "RefreshToken" in result:
                 self.refreshToken = result["AuthenticationResult"]["RefreshToken"]
             else:
                 result["AuthenticationResult"]["RefreshToken"] = self.refreshToken
-            result["expiry_date"] = (time.time() - 100) + result["AuthenticationResult"]["ExpiresIn"]
+            result["expiry_time"] = self.accessTokenExpiresAt
+            result["expiry_date"] = time.localtime(self.accessTokenExpiresAt)
             self.writeToken(result)
-        if response.status_code == 401:
+        elif response.status_code == 400:
+            _LOGGER.debug("400 response while refreshing token. Token has Expired. Re-Authorizing Now...")
+            self.auth()
+        elif response.status_code == 401:
             _LOGGER.debug("401 response while refreshing token")
             self.auth()
+        else:
+            _LOGGER.debug(f"Refresh Token method did not return a 200 or 401 response. The response code returned was: {response.status_code} and the message was: {response.text}")
     
     def writeToken(self, token):
+        _LOGGER.debug("Write Token method called.")
         # Save token to file to be reused
-        with open(self.token_location, "w") as outfile:
-            json.dump(token, outfile)
+        lock = filelock.FileLock(f"{self.token_location}.lock")
+        threadId = threading.currentThread().getName()
+        try:
+            with lock.acquire(timeout=10):
+                with open(self.token_location, "w") as outfile:
+                    _LOGGER.debug(f"Thread {threadId} has acquired lock.")
+                    json.dump(token, outfile)
+                _LOGGER.debug(f"Thread {threadId} has released lock and exited.")
+        except filelock.Timeout:
+            _LOGGER.debug(f"Another instance of this application currently holds the lock.")
 
     def readToken(self):
+        _LOGGER.debug("Read Token method called.")
         # Get saved token from file
         with open(self.token_location) as token_file:
             return json.load(token_file)
 
     def clearTempToken(self):
+        _LOGGER.debug("Clear Token method called.")
         if os.path.isfile("/tmp/droneMobile_token.txt"):
             os.remove("/tmp/droneMobile_token.txt")
         if os.path.isfile("/tmp/token.txt"):
             os.remove("/tmp/token.txt")
 
     def replaceToken(self):
+        _LOGGER.debug("Replace Token method called.")
         self.clearTempToken()
         if os.path.isfile(TOKEN_FILE_LOCATION):
             os.remove(TOKEN_FILE_LOCATION)
         self.auth()
 
     def getAllVehicles(self):
+        _LOGGER.debug("Get All Vehicles method called.")
         # Get the status of the vehicles
         self.__acquireToken()
 
@@ -185,6 +224,7 @@ class Vehicle(object):
             response.raise_for_status()
 
     def vehicle_status(self, vehicleID):
+        _LOGGER.debug("Vehicle Status method called.")
         # Get the status of the vehicles
         self.__acquireToken()
 
@@ -273,6 +313,7 @@ class Vehicle(object):
         return self.sendCommand("A30", deviceKey, "2")
 
     def sendCommand(self, command, deviceKey, deviceType):
+        _LOGGER.debug(f"Send Command method called to send {command} Command.")
         self.__acquireToken()
 
         commandHeaders = COMMAND_HEADERS
