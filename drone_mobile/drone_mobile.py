@@ -70,6 +70,8 @@ class Vehicle(object):
         prepared_request = request.prepare()
 
         _LOGGER.debug(self.pretty_print_request(prepared_request))
+        _LOGGER.debug("Headers: %s", headers)
+        _LOGGER.debug("JSON: %s", json)
 
         session = requests.Session()
         response = session.send(prepared_request)
