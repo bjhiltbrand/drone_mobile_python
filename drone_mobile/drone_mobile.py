@@ -23,8 +23,7 @@ import requests
 _LOGGER = logging.getLogger(__name__)
 defaultHeaders = {
     "Accept": "*/*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip",
+    "Accept-Encoding": "gzip, deflate, br",
 }
 
 class Vehicle(object):

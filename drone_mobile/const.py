@@ -40,8 +40,9 @@ COMMAND_HEADERS = {
 }
 
 AUTH_HEADERS = {
+    "Referer": "https://accounts.dronemobile.com/",
     "X-Amz-Target": "AWSCognitoIdentityProviderService.InitiateAuth",
-    "X-Amz-User-Agent": "aws-amplify/0.1.x js",
+    "X-Amz-User-Agent": "aws-amplify/5.0.4 js",
     "Content-Type": "application/x-amz-json-1.1",
 }
 
