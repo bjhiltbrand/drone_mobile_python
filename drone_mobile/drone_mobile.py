@@ -365,5 +365,8 @@ class Vehicle(object):
 
         if command.status_code == 200:
             return command.json()["parsed"]
+        elif command.status_code == 424:
+            _LOGGER.error(f"{command} Command failed. DroneMobile gave the following detail: {command.json()["""parsed"""]["""detail"""]}.")
+            return command.json()["parsed"]
         else:
             command.raise_for_status()
