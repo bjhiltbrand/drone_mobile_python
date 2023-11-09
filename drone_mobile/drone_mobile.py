@@ -60,11 +60,21 @@ class Vehicle(object):
             **AUTH_HEADERS,
         }
 
-        response = requests.post(
+        request = requests.Request(
+            'POST',
             URLS["auth"],
             json=json,
             headers=headers,
         )
+
+        prepared_request = request.prepare()
+
+        _LOGGER.debug(self.pretty_print_request(prepared_request))
+
+        session = requests.Session()
+        response = session.send(prepared_request)
+        
+        _LOGGER.debug(response.json)
 
         if response.status_code == 200:
             _LOGGER.debug("Succesfully fetched token.")
@@ -165,6 +175,22 @@ class Vehicle(object):
         else:
             _LOGGER.debug(f"Refresh Token method did not return a 200 or 401 response. The response code returned was: {response.status_code} and the message was: {response.text}")
     
+    def pretty_print_request(self, request):
+        """
+        At this point it is completely built and ready
+        to be fired; it is "prepared".
+
+        However pay attention at the formatting used in 
+        this function because it is programmed to be pretty 
+        printed and may differ from the actual request.
+        """
+        print('{}\n{}\r\n{}\r\n\r\n{}'.format(
+            '-----------START-----------',
+            request.method + ' ' + request.url,
+            '\r\n'.join('{}: {}'.format(k, v) for k, v in request.headers.items()),
+            request.body,
+        ))
+
     def writeToken(self, token):
         _LOGGER.debug("Write Token method called.")
         # Save token to file to be reused
