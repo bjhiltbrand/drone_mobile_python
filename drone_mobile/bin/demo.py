@@ -4,7 +4,7 @@
 Simple script to demo the API
 """
 
-import sys, os, logging, time
+import sys, json, pprint
 from drone_mobile import Vehicle
 
 if __name__ == "__main__":
@@ -13,9 +13,9 @@ if __name__ == "__main__":
         else:
                 vehicleObject = Vehicle(sys.argv[1], sys.argv[2]) # Username, Password   
                 vehicleObject.auth()        
-                r = vehicleObject.getAllVehicles()
+                vehicles = vehicleObject.getAllVehicles()
 
-                print(r.status()) # Print the status of all vehicles
+                pprint.pprint(json.dumps(vehicles), compact=True)# Print the status of all vehicles
                 
                 # r.unlock() # Unlock the doors
 
