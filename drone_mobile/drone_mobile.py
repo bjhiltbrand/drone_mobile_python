@@ -60,23 +60,11 @@ class Vehicle(object):
             **AUTH_HEADERS,
         }
 
-        request = requests.Request(
-            'POST',
+        response = requests.post(
             URLS["auth"],
             json=json,
             headers=headers,
         )
-
-        prepared_request = request.prepare()
-
-        _LOGGER.debug(self.pretty_print_request(prepared_request))
-        _LOGGER.debug("Headers: %s", headers)
-        _LOGGER.debug("JSON: %s", json)
-
-        session = requests.Session()
-        response = session.send(prepared_request)
-        
-        _LOGGER.debug(response.json)
 
         if response.status_code == 200:
             _LOGGER.debug("Succesfully fetched token.")
