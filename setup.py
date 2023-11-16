@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name='drone_mobile',
-    version='0.2.28',
+    version='0.2.29',
     author="bjhiltbrand",
     author_email="info@bjhiltbrand.me",
     description="Python wrapper for the DroneMobile API for Firstech/Compustar remote start systems.",
@@ -16,6 +16,8 @@ setup(
     packages=['drone_mobile'],
     scripts=['drone_mobile/bin/demo.py'],
     classifiers=[
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.7",
