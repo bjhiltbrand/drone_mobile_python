@@ -90,13 +90,19 @@ class VehicleInfo:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "VehicleInfo":
         """Create a VehicleInfo from API response data."""
+        # The API returns different field names than expected
+        # Handle both the standard fields and the vehicle_ prefixed ones
         return cls(
-            vehicle_id=data.get("vehicle_id", ""),
+            vehicle_id=data.get("id", data.get("vehicle_id", "")),
             device_key=data.get("device_key", ""),
-            name=data.get("name", "Unknown Vehicle"),
-            make=data.get("make"),
-            model=data.get("model"),
-            year=int(data["year"]) if data.get("year") else None,
+            name=data.get("vehicle_name", data.get("name", "Unknown Vehicle")),
+            make=data.get("vehicle_make", data.get("make")),
+            model=data.get("vehicle_model", data.get("model")),
+            year=(
+                int(data["vehicle_year"])
+                if data.get("vehicle_year")
+                else (int(data["year"]) if data.get("year") else None)
+            ),
             color=data.get("color"),
             vin=data.get("vin"),
             raw_data=data,
