@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "drone_mobile"
-version = "0.3.1"
+version = "0.3.2"
 description = "Python wrapper for the DroneMobile API for Firstech/Compustar remote start systems."
 readme = "README.md"
 authors = [

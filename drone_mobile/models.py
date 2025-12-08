@@ -46,27 +46,42 @@ class VehicleStatus:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "VehicleStatus":
         """Create a VehicleStatus from API response data."""
-        location_data = data.get("location")
-        location = Location.from_dict(location_data) if location_data else None
+        # Extract last_known_state if present (from vehicle info endpoint)
+        lks = data.get("last_known_state", {})
+        controller = lks.get("controller", {})
 
+        # Get location data - could be in different places
+        location = None
+        if "latitude" in lks and "longitude" in lks:
+            location = Location(
+                latitude=float(lks["latitude"]),
+                longitude=float(lks["longitude"]),
+                timestamp=None,
+                accuracy=None,
+            )
+        elif "location" in data:
+            location = Location.from_dict(data["location"])
+
+        # Parse timestamp
         last_updated = None
-        if "last_updated" in data:
+        timestamp_str = lks.get("timestamp") or data.get("last_updated")
+        if timestamp_str:
             try:
-                last_updated = datetime.fromisoformat(data["last_updated"])
+                last_updated = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
             except (ValueError, TypeError):
                 pass
 
         return cls(
-            vehicle_id=data.get("vehicle_id", ""),
+            vehicle_id=data.get("id", data.get("vehicle_id", "")),
             device_key=data.get("device_key", ""),
-            is_running=data.get("is_running", False),
-            is_locked=data.get("is_locked", False),
-            battery_voltage=data.get("battery_voltage"),
-            battery_percent=data.get("battery_percent"),
-            odometer=data.get("odometer"),
-            fuel_level=data.get("fuel_level"),
-            interior_temperature=data.get("interior_temperature"),
-            exterior_temperature=data.get("exterior_temperature"),
+            is_running=controller.get("engine_on", False),
+            is_locked=controller.get("armed", False),
+            battery_voltage=controller.get("main_battery_voltage"),
+            battery_percent=None,  # Not provided by API
+            odometer=lks.get("mileage"),
+            fuel_level=None,  # Not provided by API
+            interior_temperature=controller.get("current_temperature"),
+            exterior_temperature=None,  # Not provided by API separately
             location=location,
             last_updated=last_updated,
             raw_data=data,
