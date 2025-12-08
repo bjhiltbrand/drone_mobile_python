@@ -2,16 +2,14 @@
 
 import logging
 from pathlib import Path
-from types import TracebackType  # Added for robust __exit__ typing
+from types import TracebackType
 from typing import Dict, List
 
 import requests
 
 from .auth import AuthenticationManager
 from .const import (
-    API_VERSION,
     AVAILABLE_COMMANDS,
-    BASE_API_URL,
     DEFAULT_HEADERS,
     DEFAULT_TIMEOUT,
     DEVICE_TYPE_CONTROLLER,
@@ -53,7 +51,7 @@ class DroneMobileClient:
         self._session = requests.Session()
         self._vehicles: Dict[str, Vehicle] = {}
 
-    def get_vehicles(self) -> List[Vehicle]:  # Corrected redundant type hint
+    def get_vehicles(self) -> List[Vehicle]:
         """
         Get all vehicles associated with the account.
 
@@ -84,6 +82,8 @@ class DroneMobileClient:
             for vehicle_data in results:
                 vehicle_info = VehicleInfo.from_dict(vehicle_data)
                 vehicle = Vehicle(self, vehicle_info)
+                # Cache the initial status from the vehicle data
+                vehicle._cached_status = VehicleStatus.from_dict(vehicle_data)
                 self._vehicles[vehicle_info.vehicle_id] = vehicle
                 vehicles.append(vehicle)
 
@@ -94,9 +94,7 @@ class DroneMobileClient:
             self.auth.authenticate(force_refresh=True)
             return self.get_vehicles()
         elif response.status_code == 429:
-            raise RateLimitError(
-                "API rate limit exceeded", response.status_code, response.json()
-            )  # Removed invalid 'from e'
+            raise RateLimitError("API rate limit exceeded", response.status_code, response.json())
         else:
             raise APIError(
                 f"Failed to fetch vehicles: {response.text}",
@@ -132,6 +130,9 @@ class DroneMobileClient:
         """
         Get the current status of a vehicle.
 
+        Note: The vehicle list endpoint already returns full status, so this
+        fetches the vehicle list and extracts the status for the requested vehicle.
+
         Args:
             vehicle_id: The vehicle's unique identifier
 
@@ -144,12 +145,12 @@ class DroneMobileClient:
         """
         _LOGGER.debug(f"Fetching status for vehicle {vehicle_id}")
 
+        # The vehicle info endpoint returns all the status data
         headers = {**DEFAULT_HEADERS, **self.auth.get_auth_headers()}
-        url = f"{BASE_API_URL}{API_VERSION}/vehicle/{vehicle_id}"
 
         try:
             response = self._session.get(
-                url,
+                URLS["vehicle_info"],
                 headers=headers,
                 timeout=DEFAULT_TIMEOUT,
             )
@@ -157,8 +158,12 @@ class DroneMobileClient:
             raise NetworkError(f"Network error fetching vehicle status: {e}") from e
 
         if response.status_code == 200:
-            data = response.json()
-            return VehicleStatus.from_dict(data)
+            results = response.json().get("results", [])
+            for vehicle_data in results:
+                vid = vehicle_data.get("id", vehicle_data.get("vehicle_id"))
+                if vid == vehicle_id:
+                    return VehicleStatus.from_dict(vehicle_data)
+            raise VehicleNotFoundError(f"Vehicle {vehicle_id} not found")
         elif response.status_code == 401:
             _LOGGER.debug("Token expired, refreshing and retrying")
             self.auth.authenticate(force_refresh=True)
