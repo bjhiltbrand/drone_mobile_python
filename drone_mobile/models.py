@@ -145,8 +145,13 @@ class CommandResponse:
             except (ValueError, TypeError):
                 pass
 
+        # The DroneMobile API returns "command_success" (not "success") to indicate
+        # whether the command was executed successfully. Fall back to "success" for
+        # any legacy or alternate response shapes.
+        success = data.get("command_success", data.get("success", False))
+
         return cls(
-            success=data.get("success", False),
+            success=success,
             message=data.get("message", ""),
             command=command,
             device_key=device_key,
