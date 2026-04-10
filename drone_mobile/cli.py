@@ -18,6 +18,26 @@ def setup_logging(verbose: bool = False) -> None:
     )
 
 
+def cli_mfa_callback(challenge_name: str) -> str:
+    """Interactive MFA prompt used by the CLI.
+
+    Cognito passes the challenge name so we can display a helpful label.
+    The user simply types their OTP and presses Enter.
+    """
+    if challenge_name == "SMS_MFA":
+        label = "SMS verification code"
+    elif challenge_name == "SOFTWARE_TOKEN_MFA":
+        label = "Authenticator app code (TOTP)"
+    else:
+        label = f"{challenge_name} code"
+
+    try:
+        return input(f"🔐 Two-factor authentication required\n   Enter {label}: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print("\nMFA entry cancelled.")
+        sys.exit(1)
+
+
 def list_vehicles(client: DroneMobileClient) -> None:
     """List all vehicles."""
     vehicles = client.get_vehicles()
@@ -178,7 +198,13 @@ def main() -> None:
         sys.exit(1)
 
     try:
-        with DroneMobileClient(args.username, args.password) as client:
+        # Pass cli_mfa_callback so the CLI can prompt for an OTP when the
+        # DroneMobile Cognito user pool requires a second factor.
+        with DroneMobileClient(
+            args.username,
+            args.password,
+            mfa_callback=cli_mfa_callback,
+        ) as client:
             if args.command == "list":
                 list_vehicles(client)
             elif args.command == "status":

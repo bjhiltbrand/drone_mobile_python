@@ -65,10 +65,24 @@ AUTH_HEADERS: Final[dict] = {
     "Content-Type": "application/x-amz-json-1.1",
 }
 
+# Used for the RespondToAuthChallenge call (MFA step).
+# Identical to AUTH_HEADERS except for the Amz-Target.
+MFA_CHALLENGE_HEADERS: Final[dict] = {
+    "Referer": "https://accounts.dronemobile.com/",
+    "X-Amz-Target": "AWSCognitoIdentityProviderService.RespondToAuthChallenge",
+    "X-Amz-User-Agent": "aws-amplify/5.0.4 js",
+    "Content-Type": "application/x-amz-json-1.1",
+}
+
 DEFAULT_HEADERS: Final[dict] = {
     "Accept": "*/*",
     "Accept-Encoding": "gzip, deflate, br",
 }
+
+# Cognito MFA challenge names that this library handles.
+# SMS_MFA  – one-time code sent via SMS.
+# SOFTWARE_TOKEN_MFA – TOTP code from an authenticator app (e.g. Google Authenticator).
+SUPPORTED_MFA_CHALLENGES: Final[frozenset] = frozenset({"SMS_MFA", "SOFTWARE_TOKEN_MFA"})
 
 # Token Storage
 # Use XDG_CONFIG_HOME if available, otherwise fall back to ~/.config

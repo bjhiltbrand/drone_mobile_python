@@ -3,11 +3,11 @@
 import logging
 from pathlib import Path
 from types import TracebackType
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import requests
 
-from .auth import AuthenticationManager
+from .auth import AuthenticationManager, MFACallback
 from .const import (
     AVAILABLE_COMMANDS,
     DEFAULT_HEADERS,
@@ -31,13 +31,26 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class DroneMobileClient:
-    """Client for interacting with the DroneMobile API."""
+    """Client for interacting with the DroneMobile API.
+
+    MFA / 2-factor authentication
+    ------------------------------
+    Pass ``mfa_callback`` if your DroneMobile account has MFA enabled in
+    Cognito.  The callback receives the Cognito challenge name and must return
+    the OTP code as a plain string::
+
+        def my_mfa(challenge_name: str) -> str:
+            return input(f"Enter {challenge_name} code: ").strip()
+
+        client = DroneMobileClient(email, password, mfa_callback=my_mfa)
+    """
 
     def __init__(
         self,
         username: str,
         password: str,
         token_dir: Path | None = None,
+        mfa_callback: Optional[MFACallback] = None,
     ):
         """
         Initialize the DroneMobile client.
@@ -46,8 +59,11 @@ class DroneMobileClient:
             username: DroneMobile account username/email
             password: DroneMobile account password
             token_dir: Optional directory for token storage
+            mfa_callback: Optional callable ``(challenge_name: str) -> str``
+                used to supply an OTP when Cognito requires a second factor.
+                If ``None`` and MFA is triggered, ``MFARequiredError`` is raised.
         """
-        self.auth = AuthenticationManager(username, password, token_dir)
+        self.auth = AuthenticationManager(username, password, token_dir, mfa_callback=mfa_callback)
         self._session = requests.Session()
         self._vehicles: Dict[str, Vehicle] = {}
 
@@ -129,9 +145,6 @@ class DroneMobileClient:
     def get_vehicle_status(self, vehicle_id: str) -> VehicleStatus:
         """
         Get the current status of a vehicle.
-
-        Note: The vehicle list endpoint already returns full status, so this
-        fetches the vehicle list and extracts the status for the requested vehicle.
 
         Args:
             vehicle_id: The vehicle's unique identifier
