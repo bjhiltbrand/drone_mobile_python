@@ -20,6 +20,7 @@ from .const import (
     DEFAULT_TOKEN_FILE,
     LEGACY_TOKEN_LOCATION,
     MFA_CHALLENGE_HEADERS,
+    MFA_CODE_LENGTH,
     SUPPORTED_MFA_CHALLENGES,
     TOKEN_EXPIRY_MARGIN,
     URLS,
@@ -92,7 +93,9 @@ class AuthenticationManager:
         self._token: AuthToken | None = None
         self._lock = threading.Lock()
 
-        # Set secure permissions on token directory
+        # Set secure permissions on token directory.
+        # Moved here from const.py so directory creation only happens when an
+        # AuthenticationManager is actually instantiated, not at import time.
         try:
             self.token_dir.mkdir(parents=True, exist_ok=True)
             os.chmod(self.token_dir, 0o700)
@@ -256,13 +259,22 @@ class AuthenticationManager:
             NetworkError: If the HTTP request fails
         """
         challenge_name: str = challenge_response["ChallengeName"]
-        session: str = challenge_response["Session"]
+        session: str = challenge_response.get("Session", "")
         params: dict = challenge_response.get("ChallengeParameters", {})
 
         if challenge_name not in SUPPORTED_MFA_CHALLENGES:
             raise AuthenticationError(
                 f"Unsupported Cognito challenge: '{challenge_name}'. "
                 f"Supported challenges: {sorted(SUPPORTED_MFA_CHALLENGES)}"
+            )
+
+        # Guard against a missing or empty Session token before doing anything
+        # further — echoing an empty session back to Cognito would produce a
+        # confusing error rather than a clear failure message.
+        if not session:
+            raise AuthenticationError(
+                "Cognito challenge response is missing a Session token. "
+                "This is unexpected and may indicate an API change."
             )
 
         if self.mfa_callback is None:
@@ -274,8 +286,18 @@ class AuthenticationManager:
             _LOGGER.info("A verification code was sent to %s", params["CODE_DELIVERY_DESTINATION"])
 
         otp_code = self.mfa_callback(challenge_name)
+
         if not otp_code or not otp_code.strip():
             raise AuthenticationError("MFA callback returned an empty code.")
+
+        # Validate that the code is exactly MFA_CODE_LENGTH digits before
+        # sending it to Cognito, so the user gets a clear local error instead
+        # of a cryptic API rejection.
+        cleaned_code = otp_code.strip()
+        if not cleaned_code.isdigit() or len(cleaned_code) != MFA_CODE_LENGTH:
+            raise AuthenticationError(
+                f"MFA code must be exactly {MFA_CODE_LENGTH} digits, " f"got: '{cleaned_code}'"
+            )
 
         # Map challenge name to the correct ChallengeResponse key.
         code_key = "SMS_MFA_CODE" if challenge_name == "SMS_MFA" else "SOFTWARE_TOKEN_MFA_CODE"
@@ -286,7 +308,7 @@ class AuthenticationManager:
             "Session": session,
             "ChallengeResponses": {
                 "USERNAME": self.username,
-                code_key: otp_code.strip(),
+                code_key: cleaned_code,
             },
         }
 
@@ -371,6 +393,13 @@ class AuthenticationManager:
 
         if response.status_code == 200:
             result = response.json()
+
+            # Guard against an unexpected response shape before accessing nested
+            # keys — a missing AuthenticationResult would otherwise raise an
+            # unhandled KeyError rather than a clean AuthenticationError.
+            if "AuthenticationResult" not in result:
+                raise AuthenticationError(f"Unexpected token refresh response shape: {result}")
+
             # Refresh response doesn't always include new refresh token
             if "RefreshToken" not in result["AuthenticationResult"]:
                 result["AuthenticationResult"]["RefreshToken"] = self._token.refresh_token

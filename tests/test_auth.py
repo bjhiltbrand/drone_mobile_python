@@ -103,6 +103,13 @@ class TestAuthenticationManager:
         assert auth._token is None
         assert auth.mfa_callback is None
 
+    def test_init_creates_token_dir(self, tmp_path):
+        """Token directory is created on instantiation, not at import time."""
+        token_dir = tmp_path / "subdir" / "drone_mobile"
+        assert not token_dir.exists()
+        AuthenticationManager("u", "p", token_dir=token_dir)
+        assert token_dir.exists()
+
     def test_init_with_mfa_callback(self, tmp_path):
         """Test initialization with an MFA callback."""
         cb = lambda _: "000000"  # noqa: E731
@@ -184,6 +191,21 @@ class TestAuthenticationManager:
 
         assert token.access_token == "access_token_123"
         assert mock_post.call_count == 2
+
+    @patch("drone_mobile.auth.requests.post")
+    def test_refresh_token_unexpected_response_shape(self, mock_post, auth_manager, valid_token):
+        """Test that a 200 with no AuthenticationResult raises AuthenticationError."""
+        auth_manager._token = valid_token
+        auth_manager._token.expires_at = datetime.now() - timedelta(minutes=1)
+
+        mock_response = Mock()
+        mock_response.status_code = 200
+        # Cognito returns 200 but with an unexpected body (e.g. maintenance page)
+        mock_response.json.return_value = {"message": "Service temporarily unavailable"}
+        mock_post.return_value = mock_response
+
+        with pytest.raises(AuthenticationError, match="Unexpected token refresh response shape"):
+            auth_manager._refresh_token()
 
     def test_save_and_load_token(self, auth_manager, valid_token):
         """Test saving and loading token from file."""
@@ -409,6 +431,61 @@ class TestMFAChallenge:
 
         with pytest.raises(AuthenticationError, match="empty code"):
             auth.authenticate()
+
+    # --- OTP length validation ---
+
+    @pytest.mark.parametrize("bad_code", ["12345", "1234567", "12345a", "abc123"])
+    @patch("drone_mobile.auth.requests.post")
+    def test_mfa_code_wrong_length_raises(
+        self, mock_post, tmp_path, sms_challenge_response, bad_code
+    ):
+        """AuthenticationError is raised when the OTP is not exactly 6 digits."""
+        auth = AuthenticationManager("u", "p", token_dir=tmp_path, mfa_callback=lambda _: bad_code)
+
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = sms_challenge_response
+        mock_post.return_value = mock_response
+
+        with pytest.raises(AuthenticationError, match="exactly 6 digits"):
+            auth.authenticate()
+
+    @patch("drone_mobile.auth.requests.post")
+    def test_mfa_code_exactly_6_digits_accepted(
+        self, mock_post, tmp_path, sms_challenge_response, mock_auth_response
+    ):
+        """A correctly formed 6-digit OTP passes validation and reaches Cognito."""
+        auth = AuthenticationManager("u", "p", token_dir=tmp_path, mfa_callback=lambda _: "654321")
+
+        initiate_resp = Mock()
+        initiate_resp.status_code = 200
+        initiate_resp.json.return_value = sms_challenge_response
+
+        challenge_resp = Mock()
+        challenge_resp.status_code = 200
+        challenge_resp.json.return_value = mock_auth_response
+
+        mock_post.side_effect = [initiate_resp, challenge_resp]
+
+        token = auth.authenticate()
+        assert not token.is_expired()
+
+    # --- Missing Session guard ---
+
+    @patch("drone_mobile.auth.requests.post")
+    def test_missing_session_token_raises(self, mock_post, auth_manager_with_mfa):
+        """AuthenticationError is raised when Cognito omits the Session token."""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "ChallengeName": "SMS_MFA",
+            # Session key intentionally absent
+            "ChallengeParameters": {},
+        }
+        mock_post.return_value = mock_response
+
+        with pytest.raises(AuthenticationError, match="missing a Session token"):
+            auth_manager_with_mfa.authenticate()
 
     # --- Callback receives challenge name ---
 

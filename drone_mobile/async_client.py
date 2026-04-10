@@ -26,6 +26,7 @@ from .const import (
 )
 from .exceptions import (
     APIError,
+    AuthenticationError,
     CommandFailedError,
     InvalidCommandError,
     NetworkError,
@@ -160,9 +161,14 @@ class AsyncDroneMobileClient:
             self._session = aiohttp.ClientSession(timeout=timeout)
         return self._session
 
-    async def get_vehicles(self) -> List[AsyncVehicle]:
+    async def get_vehicles(self, _retry: bool = True) -> List[AsyncVehicle]:
         """
         Get all vehicles associated with the account.
+
+        Args:
+            _retry: Internal flag — set to False after a single token-refresh
+                retry to prevent infinite recursion if the API keeps returning
+                401 despite a fresh token.
 
         Returns:
             List of AsyncVehicle objects
@@ -187,9 +193,14 @@ class AsyncDroneMobileClient:
                     _LOGGER.info(f"Found {len(vehicles)} vehicle(s)")
                     return vehicles
                 elif response.status == 401:
+                    if not _retry:
+                        raise AuthenticationError(
+                            "Token refresh did not resolve 401 on get_vehicles. "
+                            "The account may be suspended or the API credentials revoked."
+                        )
                     _LOGGER.debug("Token expired, refreshing and retrying")
                     self.auth.authenticate(force_refresh=True)
-                    return await self.get_vehicles()
+                    return await self.get_vehicles(_retry=False)
                 elif response.status == 429:
                     raise RateLimitError(
                         "API rate limit exceeded", response.status, await response.json()
@@ -216,8 +227,16 @@ class AsyncDroneMobileClient:
 
         raise VehicleNotFoundError(f"Vehicle with ID {vehicle_id} not found")
 
-    async def get_vehicle_status(self, vehicle_id: str) -> VehicleStatus:
-        """Get the current status of a vehicle."""
+    async def get_vehicle_status(self, vehicle_id: str, _retry: bool = True) -> VehicleStatus:
+        """
+        Get the current status of a vehicle.
+
+        Args:
+            vehicle_id: The vehicle's unique identifier
+            _retry: Internal flag — set to False after a single token-refresh
+                retry to prevent infinite recursion if the API keeps returning
+                401 despite a fresh token.
+        """
         _LOGGER.debug(f"Fetching status for vehicle {vehicle_id}")
         session = await self._ensure_session()
         headers = {**DEFAULT_HEADERS, **self.auth.get_auth_headers()}
@@ -229,9 +248,14 @@ class AsyncDroneMobileClient:
                     data = await response.json()
                     return VehicleStatus.from_dict(data)
                 elif response.status == 401:
+                    if not _retry:
+                        raise AuthenticationError(
+                            "Token refresh did not resolve 401 on get_vehicle_status. "
+                            "The account may be suspended or the API credentials revoked."
+                        )
                     _LOGGER.debug("Token expired, refreshing and retrying")
                     self.auth.authenticate(force_refresh=True)
-                    return await self.get_vehicle_status(vehicle_id)
+                    return await self.get_vehicle_status(vehicle_id, _retry=False)
                 elif response.status == 404:
                     raise VehicleNotFoundError(f"Vehicle {vehicle_id} not found")
                 elif response.status == 429:
@@ -253,8 +277,19 @@ class AsyncDroneMobileClient:
         device_key: str,
         command: str,
         device_type: str = DEVICE_TYPE_VEHICLE,
+        _retry: bool = True,
     ) -> CommandResponse:
-        """Send a command to a vehicle."""
+        """
+        Send a command to a vehicle.
+
+        Args:
+            device_key: The device key for the vehicle
+            command: The command to send (must be in AVAILABLE_COMMANDS)
+            device_type: The device type (default: vehicle)
+            _retry: Internal flag — set to False after a single token-refresh
+                retry to prevent infinite recursion if the API keeps returning
+                401 despite a fresh token.
+        """
         if command not in AVAILABLE_COMMANDS:
             raise InvalidCommandError(
                 f"Invalid command '{command}'. Must be one of: {', '.join(AVAILABLE_COMMANDS)}"
@@ -276,9 +311,14 @@ class AsyncDroneMobileClient:
                     parsed = data.get("parsed", {})
                     return CommandResponse.from_dict(parsed, command, device_key)
                 elif response.status == 401:
+                    if not _retry:
+                        raise AuthenticationError(
+                            "Token refresh did not resolve 401 on send_command. "
+                            "The account may be suspended or the API credentials revoked."
+                        )
                     _LOGGER.debug("Token expired, refreshing and retrying")
                     self.auth.authenticate(force_refresh=True)
-                    return await self.send_command(device_key, command, device_type)
+                    return await self.send_command(device_key, command, device_type, _retry=False)
                 elif response.status == 424:
                     data = await response.json()
                     error_data = data.get("parsed", {})

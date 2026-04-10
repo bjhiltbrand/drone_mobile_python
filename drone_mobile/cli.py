@@ -2,6 +2,7 @@
 """Command line interface for DroneMobile."""
 
 import argparse
+import getpass
 import logging
 import sys
 
@@ -157,7 +158,16 @@ def main() -> None:
     parser.add_argument("--version", action="version", version=f"drone_mobile {__version__}")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
     parser.add_argument("username", help="DroneMobile username/email")
-    parser.add_argument("password", help="DroneMobile password")
+    parser.add_argument(
+        "password",
+        nargs="?",
+        default=None,
+        help=(
+            "DroneMobile password. "
+            "Omit to be prompted securely (recommended — avoids exposure in shell history and "
+            "ps output). If provided on the command line, it will be visible to other processes."
+        ),
+    )
 
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
@@ -197,12 +207,23 @@ def main() -> None:
         parser.print_help()
         sys.exit(1)
 
+    # Resolve password: prefer the secure interactive prompt when the argument
+    # was omitted so that the credential is never visible in ps output or
+    # stored in shell history.
+    password = args.password
+    if password is None:
+        try:
+            password = getpass.getpass("Password: ")
+        except (EOFError, KeyboardInterrupt):
+            print("\nPassword entry cancelled.")
+            sys.exit(1)
+
     try:
         # Pass cli_mfa_callback so the CLI can prompt for an OTP when the
         # DroneMobile Cognito user pool requires a second factor.
         with DroneMobileClient(
             args.username,
-            args.password,
+            password,
             mfa_callback=cli_mfa_callback,
         ) as client:
             if args.command == "list":

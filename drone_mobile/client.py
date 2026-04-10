@@ -18,6 +18,7 @@ from .const import (
 )
 from .exceptions import (
     APIError,
+    AuthenticationError,
     CommandFailedError,
     InvalidCommandError,
     NetworkError,
@@ -67,15 +68,21 @@ class DroneMobileClient:
         self._session = requests.Session()
         self._vehicles: Dict[str, Vehicle] = {}
 
-    def get_vehicles(self) -> List[Vehicle]:
+    def get_vehicles(self, _retry: bool = True) -> List[Vehicle]:
         """
         Get all vehicles associated with the account.
+
+        Args:
+            _retry: Internal flag — set to False after a single token-refresh
+                retry to prevent infinite recursion if the API keeps returning
+                401 despite a fresh token.
 
         Returns:
             List of Vehicle objects
 
         Raises:
             APIError: If API request fails
+            AuthenticationError: If token refresh does not resolve a 401
             NetworkError: If network request fails
         """
         _LOGGER.debug("Fetching all vehicles")
@@ -106,9 +113,14 @@ class DroneMobileClient:
             _LOGGER.info(f"Found {len(vehicles)} vehicle(s)")
             return vehicles
         elif response.status_code == 401:
+            if not _retry:
+                raise AuthenticationError(
+                    "Token refresh did not resolve 401 on get_vehicles. "
+                    "The account may be suspended or the API credentials revoked."
+                )
             _LOGGER.debug("Token expired, refreshing and retrying")
             self.auth.authenticate(force_refresh=True)
-            return self.get_vehicles()
+            return self.get_vehicles(_retry=False)
         elif response.status_code == 429:
             raise RateLimitError("API rate limit exceeded", response.status_code, response.json())
         else:
@@ -142,18 +154,22 @@ class DroneMobileClient:
                 return vehicle
         raise VehicleNotFoundError(f"Vehicle with ID {vehicle_id} not found")
 
-    def get_vehicle_status(self, vehicle_id: str) -> VehicleStatus:
+    def get_vehicle_status(self, vehicle_id: str, _retry: bool = True) -> VehicleStatus:
         """
         Get the current status of a vehicle.
 
         Args:
             vehicle_id: The vehicle's unique identifier
+            _retry: Internal flag — set to False after a single token-refresh
+                retry to prevent infinite recursion if the API keeps returning
+                401 despite a fresh token.
 
         Returns:
             VehicleStatus object
 
         Raises:
             APIError: If API request fails
+            AuthenticationError: If token refresh does not resolve a 401
             NetworkError: If network request fails
         """
         _LOGGER.debug(f"Fetching status for vehicle {vehicle_id}")
@@ -178,9 +194,14 @@ class DroneMobileClient:
                     return VehicleStatus.from_dict(vehicle_data)
             raise VehicleNotFoundError(f"Vehicle {vehicle_id} not found")
         elif response.status_code == 401:
+            if not _retry:
+                raise AuthenticationError(
+                    "Token refresh did not resolve 401 on get_vehicle_status. "
+                    "The account may be suspended or the API credentials revoked."
+                )
             _LOGGER.debug("Token expired, refreshing and retrying")
             self.auth.authenticate(force_refresh=True)
-            return self.get_vehicle_status(vehicle_id)
+            return self.get_vehicle_status(vehicle_id, _retry=False)
         elif response.status_code == 404:
             raise VehicleNotFoundError(f"Vehicle {vehicle_id} not found")
         elif response.status_code == 429:
@@ -197,6 +218,7 @@ class DroneMobileClient:
         device_key: str,
         command: str,
         device_type: str = DEVICE_TYPE_VEHICLE,
+        _retry: bool = True,
     ) -> CommandResponse:
         """
         Send a command to a vehicle.
@@ -205,6 +227,9 @@ class DroneMobileClient:
             device_key: The device key for the vehicle
             command: The command to send (must be in AVAILABLE_COMMANDS)
             device_type: The device type (default: vehicle)
+            _retry: Internal flag — set to False after a single token-refresh
+                retry to prevent infinite recursion if the API keeps returning
+                401 despite a fresh token.
 
         Returns:
             CommandResponse object
@@ -213,6 +238,7 @@ class DroneMobileClient:
             InvalidCommandError: If command is not valid
             CommandFailedError: If command execution fails
             APIError: If API request fails
+            AuthenticationError: If token refresh does not resolve a 401
             NetworkError: If network request fails
         """
         if command not in AVAILABLE_COMMANDS:
@@ -243,9 +269,14 @@ class DroneMobileClient:
             data = response.json().get("parsed", {})
             return CommandResponse.from_dict(data, command, device_key)
         elif response.status_code == 401:
+            if not _retry:
+                raise AuthenticationError(
+                    "Token refresh did not resolve 401 on send_command. "
+                    "The account may be suspended or the API credentials revoked."
+                )
             _LOGGER.debug("Token expired, refreshing and retrying")
             self.auth.authenticate(force_refresh=True)
-            return self.send_command(device_key, command, device_type)
+            return self.send_command(device_key, command, device_type, _retry=False)
         elif response.status_code == 424:
             error_data = response.json().get("parsed", {})
             detail = error_data.get("detail", "Command failed")
