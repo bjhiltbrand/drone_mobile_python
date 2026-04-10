@@ -5,7 +5,7 @@ A Python library for interacting with the DroneMobile API to control
 Firstech/Compustar remote start systems.
 """
 
-__version__ = "0.3.0"
+__version__ = "0.3.4"
 __author__ = "bjhiltbrand"
 
 from .client import DroneMobileClient
@@ -16,6 +16,7 @@ from .exceptions import (
     DroneMobileException,
     InvalidCommandError,
     InvalidCredentialsError,
+    MFARequiredError,
     NetworkError,
     RateLimitError,
     TokenExpiredError,
@@ -24,9 +25,6 @@ from .exceptions import (
 from .models import AuthToken, CommandResponse, Location, VehicleInfo, VehicleStatus
 from .vehicle import Vehicle
 
-# Backwards compatibility - maintain old import pattern
-# This allows: from drone_mobile import Vehicle
-# which will actually give them the client
 __all__ = [
     # Main classes
     "DroneMobileClient",
@@ -42,6 +40,7 @@ __all__ = [
     "AuthenticationError",
     "TokenExpiredError",
     "InvalidCredentialsError",
+    "MFARequiredError",
     "APIError",
     "CommandFailedError",
     "VehicleNotFoundError",

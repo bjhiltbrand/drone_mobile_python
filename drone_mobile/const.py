@@ -65,19 +65,33 @@ AUTH_HEADERS: Final[dict] = {
     "Content-Type": "application/x-amz-json-1.1",
 }
 
+# Used for the RespondToAuthChallenge call (MFA step).
+# Identical to AUTH_HEADERS except for the Amz-Target.
+MFA_CHALLENGE_HEADERS: Final[dict] = {
+    "Referer": "https://accounts.dronemobile.com/",
+    "X-Amz-Target": "AWSCognitoIdentityProviderService.RespondToAuthChallenge",
+    "X-Amz-User-Agent": "aws-amplify/5.0.4 js",
+    "Content-Type": "application/x-amz-json-1.1",
+}
+
 DEFAULT_HEADERS: Final[dict] = {
     "Accept": "*/*",
     "Accept-Encoding": "gzip, deflate, br",
 }
+
+# Cognito MFA challenge names that this library handles.
+# SMS_MFA  – one-time code sent via SMS.
+# SOFTWARE_TOKEN_MFA – TOTP code from an authenticator app (e.g. Google Authenticator).
+SUPPORTED_MFA_CHALLENGES: Final[frozenset] = frozenset({"SMS_MFA", "SOFTWARE_TOKEN_MFA"})
+
+# Expected length of a valid MFA OTP code.
+MFA_CODE_LENGTH: Final[int] = 6
 
 # Token Storage
 # Use XDG_CONFIG_HOME if available, otherwise fall back to ~/.config
 _config_dir = Path(os.getenv("XDG_CONFIG_HOME", Path.home() / ".config"))
 DEFAULT_TOKEN_DIR: Final[Path] = _config_dir / "drone_mobile"
 DEFAULT_TOKEN_FILE: Final[str] = "token.json"
-
-# Ensure token directory exists
-DEFAULT_TOKEN_DIR.mkdir(parents=True, exist_ok=True)
 
 # Legacy token file location for migration
 LEGACY_TOKEN_LOCATION: Final[str] = "./drone_mobile_token.txt"

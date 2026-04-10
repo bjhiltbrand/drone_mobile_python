@@ -2,6 +2,7 @@
 """Command line interface for DroneMobile."""
 
 import argparse
+import getpass
 import logging
 import sys
 
@@ -16,6 +17,26 @@ def setup_logging(verbose: bool = False) -> None:
         level=level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
+
+
+def cli_mfa_callback(challenge_name: str) -> str:
+    """Interactive MFA prompt used by the CLI.
+
+    Cognito passes the challenge name so we can display a helpful label.
+    The user simply types their OTP and presses Enter.
+    """
+    if challenge_name == "SMS_MFA":
+        label = "SMS verification code"
+    elif challenge_name == "SOFTWARE_TOKEN_MFA":
+        label = "Authenticator app code (TOTP)"
+    else:
+        label = f"{challenge_name} code"
+
+    try:
+        return input(f"🔐 Two-factor authentication required\n   Enter {label}: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print("\nMFA entry cancelled.")
+        sys.exit(1)
 
 
 def list_vehicles(client: DroneMobileClient) -> None:
@@ -137,7 +158,16 @@ def main() -> None:
     parser.add_argument("--version", action="version", version=f"drone_mobile {__version__}")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
     parser.add_argument("username", help="DroneMobile username/email")
-    parser.add_argument("password", help="DroneMobile password")
+    parser.add_argument(
+        "password",
+        nargs="?",
+        default=None,
+        help=(
+            "DroneMobile password. "
+            "Omit to be prompted securely (recommended — avoids exposure in shell history and "
+            "ps output). If provided on the command line, it will be visible to other processes."
+        ),
+    )
 
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
@@ -177,8 +207,25 @@ def main() -> None:
         parser.print_help()
         sys.exit(1)
 
+    # Resolve password: prefer the secure interactive prompt when the argument
+    # was omitted so that the credential is never visible in ps output or
+    # stored in shell history.
+    password = args.password
+    if password is None:
+        try:
+            password = getpass.getpass("Password: ")
+        except (EOFError, KeyboardInterrupt):
+            print("\nPassword entry cancelled.")
+            sys.exit(1)
+
     try:
-        with DroneMobileClient(args.username, args.password) as client:
+        # Pass cli_mfa_callback so the CLI can prompt for an OTP when the
+        # DroneMobile Cognito user pool requires a second factor.
+        with DroneMobileClient(
+            args.username,
+            password,
+            mfa_callback=cli_mfa_callback,
+        ) as client:
             if args.command == "list":
                 list_vehicles(client)
             elif args.command == "status":
