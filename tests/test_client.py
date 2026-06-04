@@ -89,6 +89,25 @@ class TestDroneMobileClient:
 
         assert len(vehicles) == 0
 
+    @patch("drone_mobile.client.requests.Session.patch")
+    def test_set_features_success(self, mock_patch, client, mock_auth):
+        """Test updating controller feature settings."""
+        client.auth = mock_auth
+
+        updated = {"siren_enabled": True, "valet_mode_enabled": False}
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.content = b"{}"
+        mock_response.json.return_value = updated
+        mock_patch.return_value = mock_response
+
+        result = client.set_features("30611339962", {"siren_enabled": True})
+
+        assert result == updated
+        args, kwargs = mock_patch.call_args
+        assert args[0].endswith("/device/30611339962/features")
+        assert kwargs["json"] == {"siren_enabled": True}
+
     @patch("drone_mobile.client.requests.Session.get")
     def test_get_vehicles_rate_limit(self, mock_get, client, mock_auth):
         """Test rate limit error when getting vehicles."""

@@ -9,7 +9,9 @@ import requests
 
 from .auth import AuthenticationManager, MFACallback
 from .const import (
+    API_VERSION,
     AVAILABLE_COMMANDS,
+    BASE_API_URL,
     DEFAULT_HEADERS,
     DEFAULT_TIMEOUT,
     DEVICE_TYPE_CONTROLLER,
@@ -308,6 +310,74 @@ class DroneMobileClient:
             APIError: If API request fails
         """
         return self.send_command(device_key, "DEVICE_STATUS", DEVICE_TYPE_CONTROLLER)
+
+    def set_features(
+        self,
+        vehicle_id: str,
+        features: Dict[str, bool],
+        _retry: bool = True,
+    ) -> Dict:
+        """
+        Update controller feature settings for a vehicle.
+
+        The DroneMobile app manages settings such as the siren, valet mode,
+        shock sensor, drive lock, turbo timer, and passive arming through a
+        single features resource. The API expects the full feature object, so
+        callers should send every known flag with the desired ones changed.
+
+        Args:
+            vehicle_id: The vehicle's id (the same id used elsewhere; it keys
+                the device features endpoint).
+            features: Mapping of feature flag to desired bool, for example
+                ``{"siren_enabled": True}``.
+            _retry: Internal flag - set to False after a single token-refresh
+                retry to prevent infinite recursion on repeated 401s.
+
+        Returns:
+            The updated features as returned by the API.
+
+        Raises:
+            AuthenticationError: If token refresh does not resolve a 401
+            RateLimitError: If the API rate limit is exceeded
+            APIError: If the API request fails
+            NetworkError: If the network request fails
+        """
+        _LOGGER.debug(f"Updating features for vehicle {vehicle_id}: {features}")
+
+        headers = {**DEFAULT_HEADERS, **self.auth.get_auth_headers()}
+        url = f"{BASE_API_URL}{API_VERSION}/device/{vehicle_id}/features"
+
+        try:
+            response = self._session.patch(
+                url,
+                json=features,
+                headers=headers,
+                timeout=DEFAULT_TIMEOUT,
+            )
+        except requests.exceptions.RequestException as e:
+            raise NetworkError(f"Network error updating features: {e}") from e
+
+        if response.status_code == 200:
+            return response.json() if response.content else {}
+        elif response.status_code == 401:
+            if not _retry:
+                raise AuthenticationError(
+                    "Token refresh did not resolve 401 on set_features. "
+                    "The account may be suspended or the API credentials revoked."
+                )
+            _LOGGER.debug("Token expired, refreshing and retrying")
+            self.auth.authenticate(force_refresh=True)
+            return self.set_features(vehicle_id, features, _retry=False)
+        elif response.status_code == 429:
+            raise RateLimitError(
+                "API rate limit exceeded", response.status_code, response.json()
+            )
+        else:
+            raise APIError(
+                f"Failed to update features: {response.text}",
+                response.status_code,
+                response.json() if response.content else None,
+            )
 
     def close(self) -> None:
         """Close the HTTP session."""
