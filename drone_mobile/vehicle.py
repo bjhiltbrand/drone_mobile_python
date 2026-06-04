@@ -213,6 +213,32 @@ class Vehicle:
         _LOGGER.info(f"Requesting location for {self.name}")
         return self._client.send_command(self.device_key, "LOCATION")
 
+    def set_features(self, **features: bool) -> dict:
+        """
+        Update controller feature settings (siren, valet mode, shock sensor,
+        drive lock, turbo timer, passive arming).
+
+        The API expects the complete feature object, so pass every known flag
+        with the ones you want to change set accordingly, for example::
+
+            vehicle.set_features(
+                siren_enabled=True,
+                valet_mode_enabled=False,
+                shock_sensor_enabled=True,
+                drive_lock_enabled=False,
+                turbo_timer_start_enabled=False,
+                passive_arming_enabled=False,
+            )
+
+        Returns:
+            The updated features dict from the API.
+
+        Raises:
+            APIError: If the API request fails
+        """
+        _LOGGER.info(f"Updating features for {self.name}: {features}")
+        return self._client.set_features(self.vehicle_id, features)
+
     def __repr__(self) -> str:
         """String representation of the vehicle."""
         return (
