@@ -25,6 +25,7 @@ from .const import (
     TOKEN_EXPIRY_MARGIN,
     URLS,
 )
+from .device_srp import generate_device_verifier
 from .exceptions import (
     AuthenticationError,
     InvalidCredentialsError,
@@ -89,8 +90,10 @@ class AuthenticationManager:
         self.password = password
         self.token_dir = token_dir or DEFAULT_TOKEN_DIR
         self.token_file = self.token_dir / token_file
+        self.device_file = self.token_dir / "device.json"
         self.mfa_callback = mfa_callback
         self._token: AuthToken | None = None
+        self._device: dict | None = None
         self._lock = threading.Lock()
 
         # Set secure permissions on token directory.
@@ -371,12 +374,15 @@ class AuthenticationManager:
 
         _LOGGER.debug("Refreshing access token")
 
+        auth_params = {"REFRESH_TOKEN": self._token.refresh_token}
+        device = self._load_device()
+        if device and device.get("DeviceKey"):
+            auth_params["DEVICE_KEY"] = device["DeviceKey"]
+
         payload = {
             "AuthFlow": "REFRESH_TOKEN_AUTH",
             "ClientId": AWS_CLIENT_ID,
-            "AuthParameters": {
-                "REFRESH_TOKEN": self._token.refresh_token,
-            },
+            "AuthParameters": auth_params,
         }
 
         headers = {**DEFAULT_HEADERS, **AUTH_HEADERS}
@@ -417,6 +423,99 @@ class AuthenticationManager:
             )
 
     # ------------------------------------------------------------------
+    # Private helpers – device remembering
+    # ------------------------------------------------------------------
+
+    def _cognito_request(self, target: str, payload: dict) -> dict:
+        """Make a raw Cognito IdP API call (e.g. ConfirmDevice)."""
+        headers = {
+            **DEFAULT_HEADERS,
+            "Content-Type": "application/x-amz-json-1.1",
+            "X-Amz-Target": f"AWSCognitoIdentityProviderService.{target}",
+            "X-Amz-User-Agent": "aws-amplify/5.0.4 js",
+            "Referer": "https://accounts.dronemobile.com/",
+        }
+        try:
+            response = requests.post(
+                URLS["auth"], json=payload, headers=headers, timeout=DEFAULT_TIMEOUT
+            )
+        except requests.exceptions.RequestException as e:
+            raise NetworkError(f"Network error during {target}: {e}") from e
+        if response.status_code != 200:
+            raise AuthenticationError(
+                f"{target} failed with status {response.status_code}: {response.text}"
+            )
+        return response.json() if response.content else {}
+
+    def _remember_device(
+        self, access_token: str, device_key: str, device_group_key: str
+    ) -> None:
+        """Confirm and remember a newly-issued Cognito device.
+
+        Replicates the app's "Don't ask again on this device": generate a device
+        password verifier, ``ConfirmDevice``, then mark it remembered. The
+        DeviceKey is afterwards included on refresh so refreshes are not forced
+        through MFA.
+        """
+        existing = self._load_device()
+        if existing and existing.get("DeviceKey") == device_key:
+            return
+
+        device_password, verifier_config = generate_device_verifier(
+            device_group_key, device_key
+        )
+        self._cognito_request(
+            "ConfirmDevice",
+            {
+                "AccessToken": access_token,
+                "DeviceKey": device_key,
+                "DeviceName": "Home Assistant",
+                "DeviceSecretVerifierConfig": verifier_config,
+            },
+        )
+        self._cognito_request(
+            "UpdateDeviceStatus",
+            {
+                "AccessToken": access_token,
+                "DeviceKey": device_key,
+                "DeviceRememberedStatus": "remembered",
+            },
+        )
+        self._device = {
+            "DeviceKey": device_key,
+            "DeviceGroupKey": device_group_key,
+            "DevicePassword": device_password,
+        }
+        self._save_device()
+        _LOGGER.info("Device confirmed and remembered (DeviceKey=%s)", device_key)
+
+    def _save_device(self) -> None:
+        """Persist the remembered device next to the token."""
+        if not self._device:
+            return
+        try:
+            with open(self.device_file, "w") as f:
+                json.dump(self._device, f, indent=2)
+            try:
+                os.chmod(self.device_file, 0o600)
+            except OSError:
+                pass
+        except OSError as e:
+            _LOGGER.warning(f"Could not save device file: {e}")
+
+    def _load_device(self) -> dict | None:
+        """Load the remembered device from disk (cached in memory)."""
+        if self._device is not None:
+            return self._device
+        if self.device_file.exists():
+            try:
+                with open(self.device_file) as f:
+                    self._device = json.load(f)
+            except (json.JSONDecodeError, OSError) as e:
+                _LOGGER.warning(f"Could not load device file: {e}")
+        return self._device
+
+    # ------------------------------------------------------------------
     # Private helpers – token persistence
     # ------------------------------------------------------------------
 
@@ -431,6 +530,22 @@ class AuthenticationManager:
             AuthToken object
         """
         auth_result = response["AuthenticationResult"]
+
+        # If Cognito issued a device for this fresh login, confirm and remember
+        # it so subsequent refreshes are not forced back through MFA.
+        ndm = auth_result.get("NewDeviceMetadata")
+        if ndm and ndm.get("DeviceKey"):
+            try:
+                self._remember_device(
+                    auth_result["AccessToken"],
+                    ndm["DeviceKey"],
+                    ndm.get("DeviceGroupKey", ""),
+                )
+            except Exception as e:  # noqa: BLE001 - never block login on this
+                _LOGGER.warning(
+                    "Could not remember device (will rely on refresh token): %s", e
+                )
+
         expires_in = auth_result["ExpiresIn"]
         expires_at = datetime.now() + timedelta(seconds=expires_in - TOKEN_EXPIRY_MARGIN)
 
