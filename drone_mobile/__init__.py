@@ -5,7 +5,7 @@ A Python library for interacting with the DroneMobile API to control
 Firstech/Compustar remote start systems.
 """
 
-__version__ = "0.5.0.dev1"
+__version__ = "0.5.0"
 __author__ = "bjhiltbrand"
 
 from .client import DroneMobileClient
