@@ -8,6 +8,7 @@ Covers the three pieces of the fix:
     rejected handshake clears the stale device.
 """
 
+import base64
 import json
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
@@ -166,10 +167,12 @@ def test_confirm_failure_does_not_break_login(mock_post, tmp_path, totp_challeng
 
 
 def _seed_device(auth):
+    # Computed at runtime from obvious plaintext so no secret-looking literal
+    # ends up in the source (the value is meaningless test data).
     auth._device = {
         "DeviceKey": "us-east-1_dev-1",
         "DeviceGroupKey": "-grp1",
-        "DevicePassword": "ZGV2aWNlLXBhc3N3b3Jk",
+        "DevicePassword": base64.b64encode(b"unit-test-device-password").decode(),
     }
     auth._save_device()
 
@@ -206,7 +209,7 @@ def test_device_srp_login_skips_mfa(mock_post, tmp_path, plain_tokens):
         "ChallengeParameters": {
             "SRP_B": format((_BIG_N // 2) + 1234567, "x"),
             "SALT": "0a1b2c3d",
-            "SECRET_BLOCK": "c2VjcmV0LWJsb2Nr",
+            "SECRET_BLOCK": base64.b64encode(b"unit-test-secret-block").decode(),
         },
     }
     mock_post.side_effect = [
