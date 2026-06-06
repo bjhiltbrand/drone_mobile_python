@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Device remembering** so accounts with MFA enabled are no longer forced back
+  through a second factor every few hours. After an MFA login the device is
+  confirmed and remembered with Cognito (`ConfirmDevice` + `UpdateDeviceStatus`),
+  and once the refresh token expires the library re-authenticates with the
+  remembered device via the `DEVICE_SRP_AUTH` / `DEVICE_PASSWORD_VERIFIER`
+  challenge, with no MFA prompt.
+- `drone_mobile/device_srp.py`: device SRP helpers (`generate_device_verifier`,
+  `DeviceSRP`, `cognito_timestamp`) implementing the Cognito device SRP scheme.
+- A `device.json` file persisted next to `token.json` holding the remembered
+  `DeviceKey`, `DeviceGroupKey` and device password (mode `600`).
+- Tests: a self-contained SRP round trip (`tests/test_device_srp.py`) and the
+  full remember / device-SRP / fallback flow (`tests/test_device_remembering.py`).
+
+### Changed
+- The MFA challenge response now echoes the user pool's internal username
+  (`USER_ID_FOR_SRP`, i.e. the `sub`) instead of the email alias. Without this,
+  the resulting access token cannot call `ConfirmDevice` (Cognito rejects it
+  with "Invalid device key given"), which silently breaks device remembering.
+  Pools that omit the parameter fall back to the configured username, so
+  SMS-only setups are unaffected.
+- `REFRESH_TOKEN_AUTH` and the full `USER_PASSWORD_AUTH` login now include
+  `DEVICE_KEY` when a device has been remembered, so Cognito offers the device
+  challenge instead of MFA.
+
+### Fixed
+- Accounts with optional / authenticator-app MFA no longer drop offline every
+  few hours once the Cognito refresh token expires.
+
 ## [0.3.4] - 2026-04-10
 
 ### Added
