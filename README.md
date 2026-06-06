@@ -14,6 +14,8 @@ The code here is based off of an unsupported API from [DroneMobile](https://www.
 ## ✨ Features
 
 - 🔐 **Secure Authentication** - Automatic token management with secure storage
+- 📲 **MFA / 2-Factor Authentication** - Full support for SMS and TOTP (authenticator app) challenges
+- 💾 **Device Remembering** - Stays authenticated across refresh-token expiry without re-prompting for MFA
 - 🚗 **Vehicle Control** - Start/stop engine, lock/unlock doors, and more
 - 📊 **Status Monitoring** - Get detailed vehicle status information
 - 🎯 **Type Safe** - Full type hints for better IDE support
@@ -76,6 +78,38 @@ with DroneMobileClient("email@example.com", "password") as client:
         print(f"{vehicle.name}: {'Running' if status.is_running else 'Stopped'}")
 ```
 
+### MFA / 2-Factor Authentication
+
+If your DroneMobile account has MFA enabled, pass an `mfa_callback` that returns the one-time code:
+
+```python
+from drone_mobile import DroneMobileClient
+
+def prompt_mfa(challenge_name: str) -> str:
+    label = "SMS code" if challenge_name == "SMS_MFA" else "Authenticator app code"
+    return input(f"Two-factor authentication required. Enter {label}: ").strip()
+
+client = DroneMobileClient("email@example.com", "password", mfa_callback=prompt_mfa)
+vehicles = client.get_vehicles()
+```
+
+Both `SMS_MFA` (text message) and `SOFTWARE_TOKEN_MFA` (Google Authenticator, Authy, etc.) are supported.
+
+After the first successful MFA login, the library **remembers the device** using Cognito's device SRP scheme. Subsequent re-authentications — including those triggered by refresh-token expiry — happen silently in the background without triggering another MFA prompt.
+
+If MFA is required but no callback is supplied, `MFARequiredError` is raised:
+
+```python
+from drone_mobile.exceptions import MFARequiredError
+
+try:
+    client = DroneMobileClient("email@example.com", "password")
+    vehicles = client.get_vehicles()
+except MFARequiredError as e:
+    print(f"MFA required: {e.challenge_name}")
+    # Re-create the client with a callback and retry
+```
+
 ### Error Handling
 
 ```python
@@ -83,7 +117,7 @@ from drone_mobile import DroneMobileClient
 from drone_mobile.exceptions import (
     AuthenticationError,
     CommandFailedError,
-    VehicleNotFoundError
+    VehicleNotFoundError,
 )
 
 try:
@@ -119,11 +153,24 @@ drone-mobile-demo user@example.com password cmd stop
 drone-mobile-demo -v user@example.com password status
 ```
 
+The CLI automatically handles MFA challenges interactively — no extra flags needed.
+
 ## 📚 API Reference
 
 ### DroneMobileClient
 
 Main client for interacting with the DroneMobile API.
+
+#### Constructor
+
+```python
+DroneMobileClient(
+    username: str,
+    password: str,
+    token_dir: Path | None = None,
+    mfa_callback: Callable[[str], str] | None = None,
+)
+```
 
 #### Methods
 
@@ -156,6 +203,7 @@ Represents a vehicle with control methods.
 - `aux1() -> CommandResponse` - Trigger auxiliary 1
 - `aux2() -> CommandResponse` - Trigger auxiliary 2
 - `get_location() -> CommandResponse` - Get GPS location
+- `set_features(**features: bool) -> dict` - Update controller feature flags
 
 ### Data Models
 
@@ -197,9 +245,11 @@ class VehicleInfo:
 
 ## 🔒 Security
 
-- Tokens are stored securely in `~/.config/drone_mobile/` with restrictive permissions (0600)
-- Sensitive data is never logged
+- Tokens are stored securely in `~/.config/drone_mobile/` with restrictive permissions (`0600`)
+- The remembered-device secret (`device.json`) is stored alongside tokens with the same permissions
+- Sensitive data (OTP codes, tokens) is never written to logs at any level
 - Automatic token refresh prevents credential exposure
+- The Cognito `Session` challenge token is kept in memory only and never persisted
 
 ## 🧪 Development
 
@@ -228,6 +278,8 @@ pytest --cov=drone_mobile --cov-report=html
 
 # Run specific test file
 pytest tests/test_auth.py
+pytest tests/test_device_srp.py
+pytest tests/test_device_remembering.py
 ```
 
 ### Code Quality
@@ -245,6 +297,18 @@ mypy drone_mobile/
 # Run all checks
 make format lint type-check test
 ```
+
+## 📝 Migration from 0.3.x to 0.4.x
+
+No breaking changes. This release is fully backward-compatible.
+
+Accounts **without** MFA are unaffected — authentication works exactly as before.
+
+Accounts **with** MFA benefit from device remembering automatically: after the first
+successful MFA login, the library stores a device secret in
+`~/.config/drone_mobile/device.json` and uses Cognito's device SRP flow on
+subsequent re-authentications, so you won't be prompted for a second factor again
+unless you explicitly clear the stored device.
 
 ## 📝 Migration from 0.2.x
 

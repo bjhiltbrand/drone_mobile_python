@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.1] - 2026-06-06
 
 ### Added
 - **Device remembering** so accounts with MFA enabled are no longer forced back
@@ -18,8 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `DeviceSRP`, `cognito_timestamp`) implementing the Cognito device SRP scheme.
 - A `device.json` file persisted next to `token.json` holding the remembered
   `DeviceKey`, `DeviceGroupKey` and device password (mode `600`).
-- Tests: a self-contained SRP round trip (`tests/test_device_srp.py`) and the
-  full remember / device-SRP / fallback flow (`tests/test_device_remembering.py`).
+- `tests/test_device_srp.py`: self-contained SRP round-trip tests covering
+  verifier shape, timestamp format, and a full server-side signature match.
+- `tests/test_device_remembering.py`: full integration tests for the remember /
+  device-SRP / fallback flow, including the internal-username fix and refresh
+  token propagation.
 
 ### Changed
 - The MFA challenge response now echoes the user pool's internal username
@@ -35,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Accounts with optional / authenticator-app MFA no longer drop offline every
   few hours once the Cognito refresh token expires.
+
+---
 
 ## [0.3.4] - 2026-04-10
 
