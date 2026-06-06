@@ -6,7 +6,7 @@ import os
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, cast
 
 import filelock
 import requests
@@ -546,7 +546,7 @@ class AuthenticationManager:
             raise AuthenticationError(
                 f"{target} failed with status {response.status_code}: {response.text}"
             )
-        return response.json() if response.content else {}
+        return cast(dict, response.json()) if response.content else {}
 
     def _remember_device(self, access_token: str, device_key: str, device_group_key: str) -> None:
         """Confirm and remember a newly-issued Cognito device.

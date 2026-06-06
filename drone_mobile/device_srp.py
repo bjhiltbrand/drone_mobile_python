@@ -45,7 +45,7 @@ def _sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _pad_hex(value) -> str:
+def _pad_hex(value: int | str) -> str:
     """Hex-encode an int (or normalise a hex string) the Cognito way:
     even length, with a leading ``00`` byte when the top bit is set."""
     h = format(value, "x") if isinstance(value, int) else value
@@ -56,7 +56,7 @@ def _pad_hex(value) -> str:
     return h
 
 
-def generate_device_verifier(device_group_key: str, device_key: str):
+def generate_device_verifier(device_group_key: str, device_key: str) -> tuple[str, dict[str, str]]:
     """Build the ConfirmDevice secret for a new device.
 
     Returns ``(device_password, {"PasswordVerifier": ..., "Salt": ...})``.

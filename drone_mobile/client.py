@@ -3,7 +3,7 @@
 import logging
 from pathlib import Path
 from types import TracebackType
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, cast
 
 import requests
 
@@ -358,7 +358,7 @@ class DroneMobileClient:
             raise NetworkError(f"Network error updating features: {e}") from e
 
         if response.status_code == 200:
-            return response.json() if response.content else {}
+            return cast(dict, response.json()) if response.content else {}
         elif response.status_code == 401:
             if not _retry:
                 raise AuthenticationError(
