@@ -166,11 +166,19 @@ class TestDroneMobileClient:
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "vehicle_id": "123",
-            "device_key": "device_123",
-            "is_running": True,
-            "is_locked": False,
-            "battery_percent": 85,
+            "results": [
+                {
+                    "id": "123",
+                    "device_key": "device_123",
+                    "last_known_state": {
+                        "controller": {
+                            "engine_on": True,
+                            "armed": False,
+                            "main_battery_voltage": 12.6,
+                        },
+                    },
+                }
+            ]
         }
         mock_get.return_value = mock_response
 
@@ -178,7 +186,8 @@ class TestDroneMobileClient:
 
         assert status.vehicle_id == "123"
         assert status.is_running is True
-        assert status.battery_percent == 85
+        assert status.is_locked is False
+        assert status.battery_voltage == 12.6
 
     @patch("drone_mobile.client.requests.Session.post")
     def test_send_command_success(self, mock_post, client, mock_auth):

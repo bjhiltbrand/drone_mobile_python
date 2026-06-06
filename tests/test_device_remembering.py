@@ -112,12 +112,14 @@ def test_mfa_username_falls_back_to_email(mock_post, tmp_path, plain_tokens):
 
 
 @patch("drone_mobile.auth.requests.post")
-def test_device_confirmed_and_remembered(mock_post, tmp_path, totp_challenge_sub, tokens_with_device):
+def test_device_confirmed_and_remembered(
+    mock_post, tmp_path, totp_challenge_sub, tokens_with_device
+):
     mock_post.side_effect = [
-        _resp(200, totp_challenge_sub),                  # InitiateAuth -> challenge
-        _resp(200, tokens_with_device),                  # RespondToAuthChallenge -> tokens + device
+        _resp(200, totp_challenge_sub),  # InitiateAuth -> challenge
+        _resp(200, tokens_with_device),  # RespondToAuthChallenge -> tokens + device
         _resp(200, {"UserConfirmationNecessary": True}),  # ConfirmDevice
-        _resp(200, {}),                                   # UpdateDeviceStatus
+        _resp(200, {}),  # UpdateDeviceStatus
     ]
     auth = AuthenticationManager(
         "user@example.com", "pw", token_dir=tmp_path, mfa_callback=lambda _c: "123456"
@@ -144,7 +146,9 @@ def test_device_confirmed_and_remembered(mock_post, tmp_path, totp_challenge_sub
 
 
 @patch("drone_mobile.auth.requests.post")
-def test_confirm_failure_does_not_break_login(mock_post, tmp_path, totp_challenge_sub, tokens_with_device):
+def test_confirm_failure_does_not_break_login(
+    mock_post, tmp_path, totp_challenge_sub, tokens_with_device
+):
     """A ConfirmDevice rejection is swallowed: the user still gets logged in."""
     mock_post.side_effect = [
         _resp(200, totp_challenge_sub),
@@ -213,9 +217,9 @@ def test_device_srp_login_skips_mfa(mock_post, tmp_path, plain_tokens):
         },
     }
     mock_post.side_effect = [
-        _resp(200, device_srp),         # InitiateAuth -> DEVICE_SRP_AUTH
+        _resp(200, device_srp),  # InitiateAuth -> DEVICE_SRP_AUTH
         _resp(200, password_verifier),  # DEVICE_SRP_AUTH -> DEVICE_PASSWORD_VERIFIER
-        _resp(200, plain_tokens),       # DEVICE_PASSWORD_VERIFIER -> tokens
+        _resp(200, plain_tokens),  # DEVICE_PASSWORD_VERIFIER -> tokens
     ]
 
     token = auth.authenticate(force_refresh=True)

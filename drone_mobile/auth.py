@@ -399,9 +399,7 @@ class AuthenticationManager:
             )
 
         device_key = device["DeviceKey"]
-        username = (
-            challenge.get("ChallengeParameters", {}).get("USERNAME") or self.username
-        )
+        username = challenge.get("ChallengeParameters", {}).get("USERNAME") or self.username
         srp = DeviceSRP(device["DeviceGroupKey"], device_key, device["DevicePassword"])
 
         try:
@@ -550,9 +548,7 @@ class AuthenticationManager:
             )
         return response.json() if response.content else {}
 
-    def _remember_device(
-        self, access_token: str, device_key: str, device_group_key: str
-    ) -> None:
+    def _remember_device(self, access_token: str, device_key: str, device_group_key: str) -> None:
         """Confirm and remember a newly-issued Cognito device.
 
         Replicates the app's "Don't ask again on this device": generate a device
@@ -564,9 +560,7 @@ class AuthenticationManager:
         if existing and existing.get("DeviceKey") == device_key:
             return
 
-        device_password, verifier_config = generate_device_verifier(
-            device_group_key, device_key
-        )
+        device_password, verifier_config = generate_device_verifier(device_group_key, device_key)
         self._cognito_request(
             "ConfirmDevice",
             {
@@ -654,9 +648,7 @@ class AuthenticationManager:
                     ndm.get("DeviceGroupKey", ""),
                 )
             except Exception as e:  # noqa: BLE001 - never block login on this
-                _LOGGER.warning(
-                    "Could not remember device (will rely on refresh token): %s", e
-                )
+                _LOGGER.warning("Could not remember device (will rely on refresh token): %s", e)
 
         expires_in = auth_result["ExpiresIn"]
         expires_at = datetime.now() + timedelta(seconds=expires_in - TOKEN_EXPIRY_MARGIN)

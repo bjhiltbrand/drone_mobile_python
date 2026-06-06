@@ -72,9 +72,7 @@ def generate_device_verifier(device_group_key: str, device_key: str):
     verifier_hex = _pad_hex(pow(_G, x, _BIG_N))
 
     return device_password, {
-        "PasswordVerifier": base64.standard_b64encode(
-            bytes.fromhex(verifier_hex)
-        ).decode("utf-8"),
+        "PasswordVerifier": base64.standard_b64encode(bytes.fromhex(verifier_hex)).decode("utf-8"),
         "Salt": base64.standard_b64encode(bytes.fromhex(salt_hex)).decode("utf-8"),
     }
 
@@ -112,13 +110,23 @@ def cognito_timestamp() -> str:
     """
     days = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
     months = (
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
     )
     now = datetime.datetime.now(datetime.timezone.utc)
-    return "%s %s %d %02d:%02d:%02d UTC %d" % (
-        days[now.weekday()], months[now.month - 1], now.day,
-        now.hour, now.minute, now.second, now.year,
+    return (
+        f"{days[now.weekday()]} {months[now.month - 1]} {now.day} "
+        f"{now.hour:02d}:{now.minute:02d}:{now.second:02d} UTC {now.year}"
     )
 
 
@@ -177,6 +185,6 @@ class DeviceSRP:
             + base64.standard_b64decode(secret_block)
             + timestamp.encode("utf-8")
         )
-        return base64.standard_b64encode(
-            hmac.new(key, message, hashlib.sha256).digest()
-        ).decode("utf-8")
+        return base64.standard_b64encode(hmac.new(key, message, hashlib.sha256).digest()).decode(
+            "utf-8"
+        )

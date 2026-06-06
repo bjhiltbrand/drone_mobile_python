@@ -106,16 +106,12 @@ class TestDeviceSRP:
         secret_block = base64.standard_b64encode(os.urandom(64)).decode()
         timestamp = cognito_timestamp()
 
-        signature = srp.process_challenge(
-            format(big_b, "x"), salt_hex, secret_block, timestamp
-        )
+        signature = srp.process_challenge(format(big_b, "x"), salt_hex, secret_block, timestamp)
 
         # 4. Server independently derives S = (A * v^u)^b and the signature.
         u = int(_hex_hash(_pad_hex(big_a) + _pad_hex(big_b)), 16)
         s_server = pow((big_a * pow(verifier, u, _BIG_N)) % _BIG_N, b, _BIG_N)
-        key_server = _hkdf(
-            bytes.fromhex(_pad_hex(s_server)), bytes.fromhex(_pad_hex(u))
-        )
+        key_server = _hkdf(bytes.fromhex(_pad_hex(s_server)), bytes.fromhex(_pad_hex(u)))
         message = (
             DGK.encode()
             + DK.encode()

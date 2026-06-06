@@ -67,32 +67,32 @@ class TestVehicleStatus:
         assert status.battery_percent == 85
 
     def test_from_dict_full(self):
-        """Test creating VehicleStatus from full dictionary."""
+        """Test creating VehicleStatus from a full last_known_state payload."""
         data = {
             "vehicle_id": "123",
             "device_key": "device_123",
-            "is_running": True,
-            "is_locked": False,
-            "battery_voltage": 12.6,
-            "battery_percent": 85,
-            "odometer": 15000.5,
-            "fuel_level": 75,
-            "interior_temperature": 72,
-            "exterior_temperature": 65,
-            "location": {
+            "last_known_state": {
+                "controller": {
+                    "engine_on": True,
+                    "armed": False,
+                    "main_battery_voltage": 12.6,
+                    "current_temperature": 72,
+                },
+                "mileage": 15000.5,
                 "latitude": 37.7749,
                 "longitude": -122.4194,
+                "timestamp": "2024-01-01T12:00:00",
             },
-            "last_updated": "2024-01-01T12:00:00",
         }
 
         status = VehicleStatus.from_dict(data)
 
         assert status.vehicle_id == "123"
         assert status.is_running is True
-        assert status.battery_percent == 85
+        assert status.is_locked is False
+        assert status.battery_voltage == 12.6
         assert status.odometer == 15000.5
-        assert status.fuel_level == 75
+        assert status.interior_temperature == 72
         assert status.location is not None
         assert status.location.latitude == 37.7749
 

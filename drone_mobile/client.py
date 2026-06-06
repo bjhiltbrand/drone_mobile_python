@@ -369,9 +369,7 @@ class DroneMobileClient:
             self.auth.authenticate(force_refresh=True)
             return self.set_features(vehicle_id, features, _retry=False)
         elif response.status_code == 429:
-            raise RateLimitError(
-                "API rate limit exceeded", response.status_code, response.json()
-            )
+            raise RateLimitError("API rate limit exceeded", response.status_code, response.json())
         else:
             raise APIError(
                 f"Failed to update features: {response.text}",
