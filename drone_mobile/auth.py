@@ -25,7 +25,7 @@ from .const import (
     TOKEN_EXPIRY_MARGIN,
     URLS,
 )
-from .device_srp import generate_device_verifier
+from .device_srp import DeviceSRP, cognito_timestamp, generate_device_verifier
 from .exceptions import (
     AuthenticationError,
     InvalidCredentialsError,
@@ -191,13 +191,19 @@ class AuthenticationManager:
         """
         _LOGGER.debug("Performing new authentication")
 
+        auth_params = {"USERNAME": self.username, "PASSWORD": self.password}
+
+        # If this device has been confirmed and remembered, pass its key so
+        # Cognito issues a DEVICE_SRP_AUTH challenge (which we can answer
+        # unattended) instead of forcing a second factor.
+        device = self._load_device()
+        if device and device.get("DeviceKey"):
+            auth_params["DEVICE_KEY"] = device["DeviceKey"]
+
         payload = {
             "AuthFlow": "USER_PASSWORD_AUTH",
             "ClientId": AWS_CLIENT_ID,
-            "AuthParameters": {
-                "USERNAME": self.username,
-                "PASSWORD": self.password,
-            },
+            "AuthParameters": auth_params,
             "ClientMetadata": {},
         }
 
@@ -216,8 +222,12 @@ class AuthenticationManager:
         if response.status_code == 200:
             result = response.json()
 
-            # Cognito may return a challenge instead of tokens when MFA is enabled.
-            if "ChallengeName" in result:
+            # Cognito may return a challenge instead of tokens.
+            challenge_name = result.get("ChallengeName")
+            if challenge_name == "DEVICE_SRP_AUTH":
+                # Remembered device: authenticate via device SRP, no MFA needed.
+                return self._respond_to_device_srp(result)
+            if challenge_name:
                 return self._respond_to_mfa_challenge(result)
 
             self._token = self._parse_auth_response(result)
@@ -305,12 +315,20 @@ class AuthenticationManager:
         # Map challenge name to the correct ChallengeResponse key.
         code_key = "SMS_MFA_CODE" if challenge_name == "SMS_MFA" else "SOFTWARE_TOKEN_MFA_CODE"
 
+        # Cognito requires the user pool's *internal* username here (the
+        # ``USER_ID_FOR_SRP`` it handed back, i.e. the sub), not the email alias.
+        # Echoing the email still yields tokens, but those tokens then cannot
+        # call ConfirmDevice ("Invalid device key given"), which silently breaks
+        # device remembering. Falling back to self.username keeps SMS-only pools
+        # that omit the parameter working.
+        srp_username = params.get("USER_ID_FOR_SRP") or self.username
+
         payload = {
             "ChallengeName": challenge_name,
             "ClientId": AWS_CLIENT_ID,
             "Session": session,
             "ChallengeResponses": {
-                "USERNAME": self.username,
+                "USERNAME": srp_username,
                 code_key: cleaned_code,
             },
         }
@@ -356,6 +374,91 @@ class AuthenticationManager:
             raise AuthenticationError(
                 f"MFA challenge failed with status {response.status_code}: {response.text}"
             )
+
+    def _respond_to_device_srp(self, challenge: dict) -> AuthToken:
+        """Authenticate a remembered device via Cognito's device SRP exchange.
+
+        When a device has been confirmed and remembered, Cognito issues a
+        ``DEVICE_SRP_AUTH`` challenge instead of an MFA challenge. We answer it
+        with the stored device password (a two-step SRP handshake:
+        ``DEVICE_SRP_AUTH`` -> ``DEVICE_PASSWORD_VERIFIER``), which lets the
+        integration re-authenticate without a second factor after the refresh
+        token expires.
+
+        Raises:
+            AuthenticationError: If no device secret is stored or the handshake
+                is rejected (the stale device is cleared so the next attempt
+                falls back to a clean login).
+            NetworkError: If an HTTP request fails.
+        """
+        device = self._load_device()
+        if not device or not device.get("DevicePassword"):
+            raise AuthenticationError(
+                "Cognito requested DEVICE_SRP_AUTH but no remembered device "
+                "secret is stored; a fresh login is required."
+            )
+
+        device_key = device["DeviceKey"]
+        username = (
+            challenge.get("ChallengeParameters", {}).get("USERNAME") or self.username
+        )
+        srp = DeviceSRP(device["DeviceGroupKey"], device_key, device["DevicePassword"])
+
+        try:
+            # Step 1: send the client SRP public value (SRP_A).
+            srp_payload = {
+                "ChallengeName": "DEVICE_SRP_AUTH",
+                "ClientId": AWS_CLIENT_ID,
+                "ChallengeResponses": {
+                    "USERNAME": username,
+                    "DEVICE_KEY": device_key,
+                    "SRP_A": srp.srp_a,
+                },
+            }
+            if challenge.get("Session"):
+                srp_payload["Session"] = challenge["Session"]
+            verifier = self._cognito_request("RespondToAuthChallenge", srp_payload)
+
+            if verifier.get("ChallengeName") != "DEVICE_PASSWORD_VERIFIER":
+                raise AuthenticationError(
+                    "Unexpected challenge after DEVICE_SRP_AUTH: "
+                    f"{verifier.get('ChallengeName')}"
+                )
+
+            # Step 2: prove possession of the device password.
+            cp = verifier["ChallengeParameters"]
+            timestamp = cognito_timestamp()
+            signature = srp.process_challenge(
+                cp["SRP_B"], cp["SALT"], cp["SECRET_BLOCK"], timestamp
+            )
+            verify_payload = {
+                "ChallengeName": "DEVICE_PASSWORD_VERIFIER",
+                "ClientId": AWS_CLIENT_ID,
+                "ChallengeResponses": {
+                    "USERNAME": username,
+                    "DEVICE_KEY": device_key,
+                    "TIMESTAMP": timestamp,
+                    "PASSWORD_CLAIM_SECRET_BLOCK": cp["SECRET_BLOCK"],
+                    "PASSWORD_CLAIM_SIGNATURE": signature,
+                },
+            }
+            if verifier.get("Session"):
+                verify_payload["Session"] = verifier["Session"]
+            result = self._cognito_request("RespondToAuthChallenge", verify_payload)
+        except AuthenticationError:
+            # The remembered device is no longer usable (revoked, rotated, or a
+            # bad secret). Drop it so the next attempt does a clean MFA login.
+            _LOGGER.warning(
+                "Device SRP login failed; clearing remembered device so the next "
+                "login starts fresh."
+            )
+            self._clear_device()
+            raise
+
+        self._token = self._parse_auth_response(result)
+        self._save_token(self._token)
+        _LOGGER.info("Authenticated via remembered device (MFA skipped)")
+        return self._token
 
     def _refresh_token(self) -> AuthToken:
         """
@@ -514,6 +617,15 @@ class AuthenticationManager:
             except (json.JSONDecodeError, OSError) as e:
                 _LOGGER.warning(f"Could not load device file: {e}")
         return self._device
+
+    def _clear_device(self) -> None:
+        """Forget the remembered device (in memory and on disk)."""
+        self._device = None
+        try:
+            if self.device_file.exists():
+                self.device_file.unlink()
+        except OSError as e:
+            _LOGGER.debug(f"Could not remove device file: {e}")
 
     # ------------------------------------------------------------------
     # Private helpers – token persistence

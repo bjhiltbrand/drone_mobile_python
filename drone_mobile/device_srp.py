@@ -12,7 +12,9 @@ This mirrors the AWS Cognito device SRP scheme (the same math used by
 from __future__ import annotations
 
 import base64
+import datetime
 import hashlib
+import hmac
 import os
 
 # 3072-bit group used by Cognito SRP.
@@ -75,3 +77,106 @@ def generate_device_verifier(device_group_key: str, device_key: str):
         ).decode("utf-8"),
         "Salt": base64.standard_b64encode(bytes.fromhex(salt_hex)).decode("utf-8"),
     }
+
+
+# ---------------------------------------------------------------------------
+# Device SRP authentication (DEVICE_SRP_AUTH / DEVICE_PASSWORD_VERIFIER)
+# ---------------------------------------------------------------------------
+#
+# Once a device is confirmed and "remembered", Cognito offers a DEVICE_SRP_AUTH
+# challenge in place of MFA on subsequent logins. Answering it with the device
+# password lets the integration re-authenticate unattended (no second factor),
+# which is what keeps the connection alive after the refresh token expires.
+
+# SRP-6a multiplier parameter: k = H(N | PAD(g)).
+_K = int(_sha256_hex(bytes.fromhex("00" + _N_HEX + "0" + format(_G, "x"))), 16)
+_DERIVED_KEY_INFO = b"Caldera Derived Key"
+
+
+def _hex_hash(hex_str: str) -> str:
+    """SHA-256 of the bytes a hex string represents, returned as hex."""
+    return _sha256_hex(bytes.fromhex(hex_str))
+
+
+def _hkdf(ikm: bytes, salt: bytes) -> bytes:
+    """Cognito's HKDF: extract with ``salt``, expand to a 16-byte key."""
+    prk = hmac.new(salt, ikm, hashlib.sha256).digest()
+    return hmac.new(prk, _DERIVED_KEY_INFO + b"\x01", hashlib.sha256).digest()[:16]
+
+
+def cognito_timestamp() -> str:
+    """Timestamp in the exact format Cognito's SRP signature expects.
+
+    e.g. ``"Tue Jun 5 09:08:07 UTC 2026"`` (English, UTC, day NOT zero-padded).
+    The day must not be zero-padded or the signature check fails.
+    """
+    days = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+    months = (
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    )
+    now = datetime.datetime.now(datetime.timezone.utc)
+    return "%s %s %d %02d:%02d:%02d UTC %d" % (
+        days[now.weekday()], months[now.month - 1], now.day,
+        now.hour, now.minute, now.second, now.year,
+    )
+
+
+class DeviceSRP:
+    """Client side of Cognito's device SRP exchange.
+
+    Usage::
+
+        srp = DeviceSRP(device_group_key, device_key, device_password)
+        # answer DEVICE_SRP_AUTH with srp.srp_a, then for DEVICE_PASSWORD_VERIFIER:
+        ts = cognito_timestamp()
+        sig = srp.process_challenge(srp_b, salt, secret_block, ts)
+    """
+
+    def __init__(self, device_group_key: str, device_key: str, device_password: str):
+        self.device_group_key = device_group_key
+        self.device_key = device_key
+        self.device_password = device_password
+        self._small_a = int.from_bytes(os.urandom(128), "big") % _BIG_N
+        self._large_a = pow(_G, self._small_a, _BIG_N)
+
+    @property
+    def srp_a(self) -> str:
+        """Client public value ``A`` as hex (the ``SRP_A`` challenge parameter)."""
+        return format(self._large_a, "x")
+
+    def process_challenge(
+        self, srp_b_hex: str, salt_hex: str, secret_block: str, timestamp: str
+    ) -> str:
+        """Compute ``PASSWORD_CLAIM_SIGNATURE`` for DEVICE_PASSWORD_VERIFIER.
+
+        Args:
+            srp_b_hex: server public value ``SRP_B`` (hex) from the challenge.
+            salt_hex: ``SALT`` (hex) from the challenge.
+            secret_block: ``SECRET_BLOCK`` (base64) from the challenge.
+            timestamp: the value also returned as ``TIMESTAMP``; must come from
+                :func:`cognito_timestamp` (the signature is over it).
+        """
+        big_b = int(srp_b_hex, 16)
+        if big_b % _BIG_N == 0:
+            raise ValueError("Bad server SRP_B value (B mod N == 0)")
+        u = int(_hex_hash(_pad_hex(self._large_a) + _pad_hex(big_b)), 16)
+        if u == 0:
+            raise ValueError("Bad SRP U value (U == 0)")
+
+        full_password = f"{self.device_group_key}{self.device_key}:{self.device_password}"
+        full_password_hash = _sha256_hex(full_password.encode("utf-8"))
+        x = int(_hex_hash(_pad_hex(salt_hex) + full_password_hash), 16)
+
+        s = pow((big_b - _K * pow(_G, x, _BIG_N)) % _BIG_N, self._small_a + u * x, _BIG_N)
+        key = _hkdf(bytes.fromhex(_pad_hex(s)), bytes.fromhex(_pad_hex(u)))
+
+        message = (
+            self.device_group_key.encode("utf-8")
+            + self.device_key.encode("utf-8")
+            + base64.standard_b64decode(secret_block)
+            + timestamp.encode("utf-8")
+        )
+        return base64.standard_b64encode(
+            hmac.new(key, message, hashlib.sha256).digest()
+        ).decode("utf-8")
